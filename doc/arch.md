@@ -1,10 +1,23 @@
 # Introduction
-QuaterMaster enables the deployment, installation, and management of a storage
-under Kubernetes.  QuaterMaster uses _Operator_ technology to interact with
-Kubernetes to manage the orchestration of the storage system to a desired
-state.
+QuaterMaster enables the deployment, installation, and management of a specific
+storage system onto a Kubernetes cluster.  QuaterMaster uses _Operator_
+technology to interact with Kubernetes and manage the orchestration of the
+storage system.
 
 # Architecture
+An administrator deploys QuaterMaster through a Kubernetes Deployment.
+The deployment will start the _QuaterMaster Operator_ Pod which will
+determine the desired state of the requested storage system.  If the state
+is not satisfied, then QuaterMaster will then determine a path to move the
+storage system to the desired state.  QuaterMaster will also register
+two _Third Party Resources_ if they do not exist: StorageNode, StorageStatus.
+_StorageNode_ is a third party resource which describes a storage node,
+
+On an initial setup, QuaterMaster will notice that the storage cannot
+be created until storage nodes are defined by the administrator.  At this
+point QuaterMaster will wait for an event from Kubernetes showing new
+storage nodes have been registered with the system.
+
 
 ## QM Operator
 
