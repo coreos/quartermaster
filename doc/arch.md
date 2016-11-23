@@ -70,6 +70,10 @@ $ kubectl get storagestatus
 $ kubectl get storagestatus/<storage status object> -o yaml
 ```
 
+> TODO: It would be great for `kubectl get storagestatus` to correctly
+> display the appropriate columns with ONLINE/OFFLINE and any other
+> future requests.
+
 When enough nodes and devices are available, QuarterMaster will change
 the status of the storage system to 'ONLINE', according to the requirements
 from the storage system specific layer.  An 'OFFLINE' to 'ONLINE' status
