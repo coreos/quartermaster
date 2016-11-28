@@ -1,6 +1,6 @@
 # Introduction
-The deployment and management of distrubted storage systems is not only
-complicated, but also quite different accross different storage systems.
+The deployment and management of distributed storage systems is not only
+complicated, but also quite different across different storage systems.
 Although some distributed storage systems have their own deployment tools,
 they are based on a bare metal or virtual machine model and do not integrate
 with Kubernetes.  QuarterMaster enables the deployment, installation, and
@@ -40,10 +40,10 @@ for the management, control, and communication with the desired
 storage system interfaces.
 
 ## Namespace Recommendation
-It is recommended to have single namespace per quatermaster
+It is recommended to have single namespace per quartermaster
 deployment. QuarterMaster has no technical restrictions on supporting
 multiple storage systems on the same namespace, but it will be simpler
-for the administrator to manage their systems through namespace segragation.
+for the administrator to manage their systems through namespace segregation.
 
 ## Usage
 The administrator first installs QuarterMaster by submitting the appropriate
@@ -51,7 +51,7 @@ deployment for their desired storage system.  For example to deploy Torus,
 the administrator would type:
 
 ```
-$ kubectl create -f quatermaster-torus.yml
+$ kubectl create -f quartermaster-torus.yml
 ```
 
 > NOTE: There may be a need to _name_ the specific deployment which will
@@ -86,14 +86,14 @@ the status of the storage system to 'ONLINE', according to the requirements
 from the storage system specific layer.  An 'OFFLINE' to 'ONLINE' status
 transition will enable QuarterMaster to submit a _StorageClass_ object,
 which will enable Kubernetes Dynamic Provisioning using the storage
-cluster just created.  Dynamic provisioniong will enable users to
+cluster just created.  Dynamic provisioning will enable users to
 have their storage requests automatically satisfied by Kubernetes.
 
 ## Third Party Resources
 QuarterMaster will use third party resources called _StorageNodes_ and
 _StorageStatus_ to determine how to manage the storage system.  These
 resources will also be used by QuarterMaster to save any metadata needed
-to manage the storage systems approprietly.
+to manage the storage systems appropriately.
 
 ### StorageNode
 A _StorageNode_ third party resource describes a system which QuarterMaster
@@ -207,6 +207,6 @@ as deployment platforms.  QuarterMaster may also be compared with OpenStack
 Cinder, a block storage provisioner for the open source cloud, or OpenStack
 Manila, a shared storage provisioner.  It is more accurate to compare these
 OpenStack provisioners with Kubernetes Dynamic Provisioning, since both
-statisfy storage requests from users.  As of this writing, there is no
+satisfy storage requests from users.  As of this writing, there is no
 other technology in the industry which satisfies similar goals as
 QuarterMaster.
