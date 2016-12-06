@@ -113,18 +113,37 @@ apiVersion: "coreos.com/v1"
 kind: StorageNode
 metadata:
   name: <string>
+  labels: <list of labels>
 spec:
   type: <Supported types>
   nodeSelector: <map[string]string>
+  image: <specific image if needed to be different from default>
   storageNetwork:
     ips:
-      - <Array of IPs in the storage network>
+      - <
+         Array of IPs in the storage network for storage containers using
+         host networking.
+
+         It may be possible to discover IPs if none have been provided.
+         :TODO: It may or may not be possible to edit an IP of a storage
+         system after it has been added.  This will need to be determined
+         for each storage system.
+        >
   devices:
-    - <Array of raw devices>
+    - <
+        Array of raw devices
+
+        It may be possible to discover devices in the system which have
+        been pre-labeled.
+
+        It is possible to remove/add devices by editing the StorageNode.
+      >
   directories:
     - <Array of directories on node>
   glusterfs: <GlusterFS specific information>
   torus: <Torus specifc information>
+status: <QuarterMaster to fill in>
+  <storage type>:  <Status for the node according to the storage type>
 ```
 
 Example of a StorageNode for GlusterFS:
@@ -148,6 +167,13 @@ spec:
   glusterfs:
     cluster: cluster1
     zone: 1
+```
+
+It will also be possible to get storage node status for any node by requesting
+a StorageNode.  For example:
+
+```
+$ kubectl get storagenode/<node> -o yaml
 ```
 
 #### GlusterFS
@@ -181,6 +207,7 @@ apiVersion: "coreos.com/v1"
 kind: StorageStatus
 metadata:
   name: <string>
+  labels: <list of labels>
 spec:
   type: <Supported types>
   status: <string>
@@ -210,3 +237,9 @@ OpenStack provisioners with Kubernetes Dynamic Provisioning, since both
 satisfy storage requests from users.  As of this writing, there is no
 other technology in the industry which satisfies similar goals as
 QuarterMaster.
+
+# Unresolved Questions
+
+* Can we have something like a _StorageDeployer_ which automatically creates
+StorageNodes for the appropriate system?  This will make it even easier to
+deploy.
