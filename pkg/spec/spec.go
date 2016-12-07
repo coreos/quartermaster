@@ -38,14 +38,15 @@ type StorageNodeList struct {
 
 // StorageNodeSpec holds specification parameters for a StorageNode.
 type StorageNodeSpec struct {
-	Type           string                     `json:"type"` // Storage Implementation to use atop this storage.
-	NodeSelector   *unversioned.LabelSelector `json:"nodeSelector"`
-	StorageNetwork *StorageNodeNetwork        `json:"storageNetwork"`
-	Devices        []string                   `json:"devices"`     // Raw block devices available on the StorageNode to be used for storage.
-	Directories    []string                   `json:"directories"` // Directory-based storage available on the StorageNode to be used for storage.
-	GlusterFS      *GlusterStorageNode        `json:"glusterfs"`
-	Torus          *TorusStorageNode          `json:"torus"`
-	NFS            *NFSStorageNode            `json:"nfs"`
+	Image          string              `json:"image,omitempty"` // Non-default container image to use for this storage node.
+	Type           string              `json:"type"`            // Storage Implementation to use atop this storage.
+	NodeSelector   map[string]string   `json:"nodeSelector"`
+	StorageNetwork *StorageNodeNetwork `json:"storageNetwork"`
+	Devices        []string            `json:"devices"`     // Raw block devices available on the StorageNode to be used for storage.
+	Directories    []string            `json:"directories"` // Directory-based storage available on the StorageNode to be used for storage.
+	GlusterFS      *GlusterStorageNode `json:"glusterfs"`
+	Torus          *TorusStorageNode   `json:"torus"`
+	NFS            *NFSStorageNode     `json:"nfs"`
 }
 
 // StorageNodeNetwork specifies which network interfaces the StorageNode should

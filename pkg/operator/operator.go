@@ -52,7 +52,7 @@ type Operator struct {
 	rclient *rest.RESTClient
 	logger  log.Logger
 
-	storage storageType
+	storage StorageType
 
 	nodeInf cache.SharedIndexInformer
 	dsetInf cache.SharedIndexInformer
@@ -70,7 +70,7 @@ type Config struct {
 }
 
 // New creates a new controller.
-func New(c Config) (*Operator, error) {
+func New(c Config, storage StorageTypeNewFunc) (*Operator, error) {
 	cfg, err := newClusterConfig(c.Host, c.TLSInsecure, &c.TLSConfig)
 	if err != nil {
 		return nil, err
@@ -86,12 +86,18 @@ func New(c Config) (*Operator, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	st, err := storage(client)
+	if err != nil {
+		return nil, err
+	}
 	return &Operator{
 		kclient: client,
 		rclient: rclient,
 		logger:  logger,
 		queue:   newQueue(200),
 		host:    cfg.Host,
+		storage: st,
 	}, nil
 }
 
@@ -323,7 +329,6 @@ func (c *Operator) updateStatus() error {
 
 func ListOptions(name string) v1.ListOptions {
 	s := labels.SelectorFromSet(map[string]string{
-		"app":           "quartermaster",
 		"quartermaster": name,
 	})
 	return v1.ListOptions{

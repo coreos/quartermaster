@@ -16,12 +16,15 @@ package operator
 
 import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
-type storageType interface {
+type StorageType interface {
 	Init() error
 	MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*v1beta1.DaemonSet, error)
 	AddNode(s *spec.StorageNode) error
-	GetStatus() (*spec.StorageStatus, error)
+	GetStatus(s *spec.StorageNode) (*spec.StorageStatus, error)
 }
+
+type StorageTypeNewFunc func(*kubernetes.Clientset) (StorageType, error)
