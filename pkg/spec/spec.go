@@ -28,16 +28,25 @@ type StorageNode struct {
 	Spec                 StorageNodeSpec `json:"spec"`
 }
 
+// StorageNodeList is a list of StorageNode objects in Kubernetes.
+type StorageNodeList struct {
+	unversioned.TypeMeta `json:",inline"`
+	unversioned.ListMeta `json:"metadata,omitempty"`
+
+	Items []*StorageNode `json:"items"`
+}
+
 // StorageNodeSpec holds specification parameters for a StorageNode.
 type StorageNodeSpec struct {
-	Type           string                     `json:"type"` // Storage Implementation to use atop this storage.
-	NodeSelector   *unversioned.LabelSelector `json:"nodeSelector"`
-	StorageNetwork *StorageNodeNetwork        `json:"storageNetwork"`
-	Devices        []string                   `json:"devices"`     // Raw block devices available on the StorageNode to be used for storage.
-	Directories    []string                   `json:"directories"` // Directory-based storage available on the StorageNode to be used for storage.
-	GlusterFS      *GlusterStorageNode        `json:"glusterfs"`
-	Torus          *TorusStorageNode          `json:"torus"`
-	NFS            *NFSStorageNode            `json:"nfs"`
+	Image          string              `json:"image,omitempty"` // Non-default container image to use for this storage node.
+	Type           string              `json:"type"`            // Storage Implementation to use atop this storage.
+	NodeSelector   map[string]string   `json:"nodeSelector"`
+	StorageNetwork *StorageNodeNetwork `json:"storageNetwork"`
+	Devices        []string            `json:"devices"`     // Raw block devices available on the StorageNode to be used for storage.
+	Directories    []string            `json:"directories"` // Directory-based storage available on the StorageNode to be used for storage.
+	GlusterFS      *GlusterStorageNode `json:"glusterfs"`
+	Torus          *TorusStorageNode   `json:"torus"`
+	NFS            *NFSStorageNode     `json:"nfs"`
 }
 
 // StorageNodeNetwork specifies which network interfaces the StorageNode should
@@ -64,4 +73,11 @@ type NFSStorageNode struct {
 	ReadOnly     bool `json:"readOnly"`     // This node exports NFS volumes ReadOnly.
 	SubtreeCheck bool `json:"subtreeCheck"` // Enable mount subtree checking on the host.
 	NoRootSquash bool `json:"noRootSquash"` // Disable root squashing, mapping UID 0 in the client to UID 0 on the host.
+}
+
+// StorageStatus reports on the status of a storage deployment backend.
+type StorageStatus struct {
+	unversioned.TypeMeta `json:",inline"`
+	v1.ObjectMeta        `json:"metadata,omitempty"`
+	Details              map[string]string `json:"details"`
 }
