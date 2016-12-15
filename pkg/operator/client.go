@@ -21,8 +21,9 @@ import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 
 	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/unversioned"
+	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/pkg/runtime"
+	"k8s.io/client-go/pkg/runtime/schema"
 	"k8s.io/client-go/pkg/runtime/serializer"
 	"k8s.io/client-go/pkg/watch"
 	"k8s.io/client-go/rest"
@@ -33,7 +34,7 @@ const resyncPeriod = 5 * time.Minute
 
 func newQuartermasterRESTClient(c rest.Config) (*rest.RESTClient, error) {
 	c.APIPath = "/apis"
-	c.GroupVersion = &unversioned.GroupVersion{
+	c.GroupVersion = &schema.GroupVersion{
 		Group:   "storage.coreos.com",
 		Version: "v1alpha1",
 	}
@@ -65,7 +66,7 @@ func (d *storageNodeDecoder) Decode() (action watch.EventType, object runtime.Ob
 // NewStorageNodeListWatch returns a new ListWatch on the StorageNode resource.
 func NewStorageNodeListWatch(client *rest.RESTClient) *cache.ListWatch {
 	return &cache.ListWatch{
-		ListFunc: func(options api.ListOptions) (runtime.Object, error) {
+		ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 			req := client.Get().
 				Namespace(api.NamespaceAll).
 				Resource("storagenodes").
@@ -79,7 +80,7 @@ func NewStorageNodeListWatch(client *rest.RESTClient) *cache.ListWatch {
 			var p spec.StorageNodeList
 			return &p, json.Unmarshal(b, &p)
 		},
-		WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
+		WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 			r, err := client.Get().
 				Prefix("watch").
 				Namespace(api.NamespaceAll).

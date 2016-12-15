@@ -15,23 +15,23 @@
 package spec
 
 import (
-	"k8s.io/client-go/pkg/api/unversioned"
 	"k8s.io/client-go/pkg/api/v1"
+	metav1 "k8s.io/client-go/pkg/apis/meta/v1"
 )
 
 // StorageNode defines a single instance of available storage on a
 // node and the appropriate options to apply to it to make it available
 // to the cluster.
 type StorageNode struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
-	Spec                 StorageNodeSpec `json:"spec"`
+	metav1.TypeMeta `json:",inline"`
+	v1.ObjectMeta   `json:"metadata,omitempty"`
+	Spec            StorageNodeSpec `json:"spec"`
 }
 
 // StorageNodeList is a list of StorageNode objects in Kubernetes.
 type StorageNodeList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 
 	Items []*StorageNode `json:"items"`
 }
@@ -77,7 +77,7 @@ type NFSStorageNode struct {
 
 // StorageStatus reports on the status of a storage deployment backend.
 type StorageStatus struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
-	Details              map[string]string `json:"details"`
+	metav1.TypeMeta `json:",inline"`
+	v1.ObjectMeta   `json:"metadata,omitempty"`
+	Details         map[string]string `json:"details"`
 }
