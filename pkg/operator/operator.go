@@ -38,11 +38,14 @@ const (
 	TPRGroup   = "storage.coreos.com"
 	TPRVersion = "v1alpha1"
 
-	TPRStorageNodeKind   = "storagenodes"
-	TPRStorageStatusKind = "storagestatuses"
+	TPRStorageNodeKind   = "storagenode"
+	TPRStorageStatusKind = "storagestatus"
 
-	tprStorageNode   = "nodes." + TPRGroup
-	tprStorageStatus = "status." + TPRGroup
+	PluralTPRStorageNodeKind   = TPRStorageNodeKind + "s"
+	PluralTPRStorageStatusKind = TPRStorageStatusKind + "es"
+
+	tprStorageNode   = "storagenode." + TPRGroup
+	tprStorageStatus = "storagestatus." + TPRGroup
 )
 
 // Operator manages lify cycle of Prometheus deployments and
@@ -113,7 +116,7 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	c.logger.Log("msg", "connection established", "cluster-version", v)
 
 	if err := c.createTPRs(); err != nil {
-		return err
+		return c.logger.Log("msg", "unable to create tpr", "err", err)
 	}
 
 	c.nodeInf = cache.NewSharedIndexInformer(
@@ -121,10 +124,11 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 		&spec.StorageNode{}, resyncPeriod, cache.Indexers{},
 	)
 	c.dsetInf = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(c.kclient.Apps().RESTClient(), "daemonsets", api.NamespaceAll, nil),
+		cache.NewListWatchFromClient(c.kclient.ExtensionsV1beta1().RESTClient(), "daemonsets", api.NamespaceAll, nil),
 		&v1beta1.DaemonSet{}, resyncPeriod, cache.Indexers{},
 	)
 
+	c.logger.Log("msg", "Register event handlers")
 	c.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(p interface{}) {
 			c.logger.Log("msg", "enqueueStorageNode", "trigger", "storagenode add")
@@ -157,9 +161,11 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	go c.nodeInf.Run(stopc)
 	go c.dsetInf.Run(stopc)
 
+	c.logger.Log("msg", "Waiting for sync")
 	for !c.nodeInf.HasSynced() || !c.dsetInf.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
 	}
+	c.logger.Log("msg", "Sync done")
 
 	<-stopc
 	return nil
@@ -367,18 +373,22 @@ func (c *Operator) createTPRs() error {
 	tprClient := c.kclient.Extensions().ThirdPartyResources()
 
 	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
+		_, err := tprClient.Create(tpr)
+		if apierrors.IsAlreadyExists(err) {
+			c.logger.Log("msg", "TPR already registered", "tpr", tpr.Name)
+		} else if err != nil {
 			return err
+		} else {
+			c.logger.Log("msg", "TPR created", "tpr", tpr.Name)
 		}
-		c.logger.Log("msg", "TPR created", "tpr", tpr.Name)
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	err := WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, TPRStorageNodeKind)
+	err := WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, PluralTPRStorageNodeKind)
 	if err != nil {
 		return err
 	}
-	return WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, TPRStorageStatusKind)
+	return WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, PluralTPRStorageStatusKind)
 }
 
 func newClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientConfig) (*rest.Config, error) {
