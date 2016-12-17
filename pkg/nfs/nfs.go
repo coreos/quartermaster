@@ -88,7 +88,12 @@ func (st *Storage) makeDaemonSetSpec(s *spec.StorageNode) (*v1beta1.DaemonSetSpe
 
 	spec := &v1beta1.DaemonSetSpec{
 		Template: v1.PodTemplateSpec{
-			ObjectMeta: v1.ObjectMeta{},
+			ObjectMeta: v1.ObjectMeta{
+				Labels: map[string]string{
+					"nfs-ganesha-node": "daemonset",
+				},
+				Name: "nfs-ganesha",
+			},
 			Spec: v1.PodSpec{
 				NodeSelector: s.Spec.NodeSelector,
 				Containers: []v1.Container{

@@ -41,8 +41,8 @@ const (
 	TPRStorageNodeKind   = "storagenodes"
 	TPRStorageStatusKind = "storagestatuses"
 
-	tprStorageNode   = "nodes." + TPRGroup
-	tprStorageStatus = "status." + TPRGroup
+	tprStorageNode   = "storage-node." + TPRGroup
+	tprStorageStatus = "storage-status." + TPRGroup
 )
 
 // Operator manages lify cycle of Prometheus deployments and
