@@ -28,6 +28,34 @@ func (st *Storage) Init() error {
 	return nil
 }
 
+func (st *Storage) MakeDeployment(s *spec.StorageNode, old *v1beta1.Deployment) (*v1beta1.Deployment, error) {
+	if s.Spec.Image == "" {
+		s.Spec.Image = "quay.io/luis_pabon0/ganesha:latest"
+	}
+	spec, err := st.makeDeploymentSpec(s)
+	if err != nil {
+		return nil, err
+	}
+	lmap := make(map[string]string)
+	for k, v := range s.Labels {
+		lmap[k] = v
+	}
+	lmap["quartermaster"] = s.Name
+	deployment := &v1beta1.Deployment{
+		ObjectMeta: v1.ObjectMeta{
+			Name:        s.Name,
+			Namespace:   s.Namespace,
+			Annotations: s.Annotations,
+			Labels:      lmap,
+		},
+		Spec: *spec,
+	}
+	if old != nil {
+		deployment.Annotations = old.Annotations
+	}
+	return deployment, nil
+}
+
 func (st *Storage) MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*v1beta1.DaemonSet, error) {
 	if s.Spec.Image == "" {
 		s.Spec.Image = "quay.io/luis_pabon0/ganesha:latest"
@@ -61,6 +89,82 @@ func dashifyPath(s string) string {
 	return strings.Replace(s, "/", "-", -1)
 }
 
+func (st *Storage) makeDeploymentSpec(s *spec.StorageNode) (*v1beta1.DeploymentSpec, error) {
+	if len(s.Spec.Devices) != 0 {
+		return nil, fmt.Errorf("NFS does not support raw device access")
+	}
+	var volumes []v1.Volume
+	var mounts []v1.VolumeMount
+
+	for _, path := range s.Spec.Directories {
+		dash := dashifyPath(path)
+		volumes = append(volumes, v1.Volume{
+			Name: dash,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: path,
+				},
+			},
+		})
+		mounts = append(mounts, v1.VolumeMount{
+			Name:      dash,
+			MountPath: path,
+		})
+	}
+
+	privileged := true
+	replicas := int32(1)
+
+	spec := &v1beta1.DeploymentSpec{
+		Replicas: &replicas,
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: v1.ObjectMeta{
+				Labels: map[string]string{
+					"nfs-ganesha-node": s.Name,
+				},
+				Name: s.Name,
+			},
+			Spec: v1.PodSpec{
+				NodeSelector: s.Spec.NodeSelector,
+				Containers: []v1.Container{
+					v1.Container{
+						Name:            s.Name,
+						Image:           s.Spec.Image,
+						ImagePullPolicy: v1.PullIfNotPresent,
+						VolumeMounts:    mounts,
+						SecurityContext: &v1.SecurityContext{
+							Privileged: &privileged,
+						},
+
+						Ports: []v1.ContainerPort{
+							v1.ContainerPort{
+								Name:          "nfs",
+								ContainerPort: 2049,
+								//TODO(barakmich)
+								// HostIP: <get IP from spec>
+							},
+							v1.ContainerPort{
+								Name:          "mountd",
+								ContainerPort: 20048,
+								//TODO(barakmich)
+								// HostIP: <get IP from spec>
+							},
+							v1.ContainerPort{
+								Name:          "rpcbind",
+								ContainerPort: 111,
+								//TODO(barakmich)
+								// HostIP: <get IP from spec>
+							},
+						},
+					},
+				},
+				Volumes: volumes,
+			},
+		},
+	}
+	return spec, nil
+}
+
 func (st *Storage) makeDaemonSetSpec(s *spec.StorageNode) (*v1beta1.DaemonSetSpec, error) {
 	if len(s.Spec.Devices) != 0 {
 		return nil, fmt.Errorf("NFS does not support raw device access")
@@ -88,7 +192,12 @@ func (st *Storage) makeDaemonSetSpec(s *spec.StorageNode) (*v1beta1.DaemonSetSpe
 
 	spec := &v1beta1.DaemonSetSpec{
 		Template: v1.PodTemplateSpec{
-			ObjectMeta: v1.ObjectMeta{},
+			ObjectMeta: v1.ObjectMeta{
+				Labels: map[string]string{
+					"nfs-ganesha-node": "daemonset",
+				},
+				Name: "nfs-ganesha",
+			},
 			Spec: v1.PodSpec{
 				NodeSelector: s.Spec.NodeSelector,
 				Containers: []v1.Container{

@@ -38,11 +38,14 @@ const (
 	TPRGroup   = "storage.coreos.com"
 	TPRVersion = "v1alpha1"
 
-	TPRStorageNodeKind   = "storagenodes"
-	TPRStorageStatusKind = "storagestatuses"
+	TPRStorageNodeKind   = "storagenode"
+	TPRStorageStatusKind = "storagestatus"
 
-	tprStorageNode   = "nodes." + TPRGroup
-	tprStorageStatus = "status." + TPRGroup
+	PluralTPRStorageNodeKind   = TPRStorageNodeKind + "s"
+	PluralTPRStorageStatusKind = TPRStorageStatusKind + "es"
+
+	tprStorageNode   = "storage-node." + TPRGroup
+	tprStorageStatus = "storage-status." + TPRGroup
 )
 
 // Operator manages lify cycle of Prometheus deployments and
@@ -113,7 +116,7 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	c.logger.Log("msg", "connection established", "cluster-version", v)
 
 	if err := c.createTPRs(); err != nil {
-		return err
+		return c.logger.Log("msg", "unable to create tpr", "err", err)
 	}
 
 	c.nodeInf = cache.NewSharedIndexInformer(
@@ -121,10 +124,11 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 		&spec.StorageNode{}, resyncPeriod, cache.Indexers{},
 	)
 	c.dsetInf = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(c.kclient.Apps().RESTClient(), "daemonsets", api.NamespaceAll, nil),
-		&v1beta1.DaemonSet{}, resyncPeriod, cache.Indexers{},
+		cache.NewListWatchFromClient(c.kclient.ExtensionsV1beta1().RESTClient(), "deployments", api.NamespaceAll, nil),
+		&v1beta1.Deployment{}, resyncPeriod, cache.Indexers{},
 	)
 
+	c.logger.Log("msg", "Register event handlers")
 	c.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(p interface{}) {
 			c.logger.Log("msg", "enqueueStorageNode", "trigger", "storagenode add")
@@ -139,27 +143,45 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 			c.enqueueStorageNode(p)
 		},
 	})
+	/*
+		c.dsetInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(d interface{}) {
+				c.logger.Log("msg", "addDaemonSet", "trigger", "ds add")
+				c.addDaemonSet(d)
+			},
+			DeleteFunc: func(d interface{}) {
+				c.logger.Log("msg", "deleteDaemonSet", "trigger", "ds delete")
+				c.deleteDaemonSet(d)
+			},
+			UpdateFunc: func(old, cur interface{}) {
+				c.logger.Log("msg", "updateDaemonSet", "trigger", "ds update")
+				c.updateDaemonSet(old, cur)
+			},
+		})
+	*/
 	c.dsetInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(d interface{}) {
-			c.logger.Log("msg", "addDaemonSet", "trigger", "ds add")
-			c.addDaemonSet(d)
+			c.logger.Log("msg", "addDeployment", "trigger", "deployment add")
+			c.addDeployment(d)
 		},
 		DeleteFunc: func(d interface{}) {
-			c.logger.Log("msg", "deleteDaemonSet", "trigger", "ds delete")
-			c.deleteDaemonSet(d)
+			c.logger.Log("msg", "deleteDeployment", "trigger", "deployment delete")
+			c.deleteDeployment(d)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			c.logger.Log("msg", "updateDaemonSet", "trigger", "ds update")
-			c.updateDaemonSet(old, cur)
+			c.logger.Log("msg", "updateDeployment", "trigger", "deployment update")
+			c.updateDeployment(old, cur)
 		},
 	})
 
 	go c.nodeInf.Run(stopc)
 	go c.dsetInf.Run(stopc)
 
+	c.logger.Log("msg", "Waiting for sync")
 	for !c.nodeInf.HasSynced() || !c.dsetInf.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
 	}
+	c.logger.Log("msg", "Sync done")
 
 	<-stopc
 	return nil
@@ -215,7 +237,7 @@ func (c *Operator) worker() {
 	}
 }
 
-func (c *Operator) storageNodeForDeployment(d *v1beta1.DaemonSet) *spec.StorageNode {
+func (c *Operator) storageNodeForDeployment(d *v1beta1.Deployment) *spec.StorageNode {
 	key, err := keyFunc(d)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("creating key: %s", err))
@@ -233,6 +255,7 @@ func (c *Operator) storageNodeForDeployment(d *v1beta1.DaemonSet) *spec.StorageN
 	return s.(*spec.StorageNode)
 }
 
+/*
 func (c *Operator) deleteDaemonSet(o interface{}) {
 	d := o.(*v1beta1.DaemonSet)
 	if s := c.storageNodeForDeployment(d); s != nil {
@@ -263,8 +286,40 @@ func (c *Operator) updateDaemonSet(oldo, curo interface{}) {
 		c.enqueueStorageNode(s)
 	}
 }
+*/
 
-func (c *Operator) reconcile(s *spec.StorageNode) error {
+func (c *Operator) deleteDeployment(o interface{}) {
+	d := o.(*v1beta1.Deployment)
+	if s := c.storageNodeForDeployment(d); s != nil {
+		c.enqueueStorageNode(s)
+	}
+}
+
+func (c *Operator) addDeployment(o interface{}) {
+	d := o.(*v1beta1.Deployment)
+	if s := c.storageNodeForDeployment(d); s != nil {
+		c.enqueueStorageNode(s)
+	}
+}
+
+func (c *Operator) updateDeployment(oldo, curo interface{}) {
+	old := oldo.(*v1beta1.Deployment)
+	cur := curo.(*v1beta1.Deployment)
+
+	c.logger.Log("msg", "update handler", "old", old.ResourceVersion, "cur", cur.ResourceVersion)
+
+	// Periodic resync may resend the deployment without changes in-between.
+	// Also breaks loops created by updating the resource ourselves.
+	if old.ResourceVersion == cur.ResourceVersion {
+		return
+	}
+
+	if s := c.storageNodeForDeployment(cur); s != nil {
+		c.enqueueStorageNode(s)
+	}
+}
+
+func (c *Operator) reconcile_ds(s *spec.StorageNode) error {
 	key, err := keyFunc(s)
 	if err != nil {
 		return err
@@ -322,6 +377,64 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	return c.updateStatus()
 }
 
+func (c *Operator) reconcile(s *spec.StorageNode) error {
+	key, err := keyFunc(s)
+	if err != nil {
+		return err
+	}
+	c.logger.Log("msg", "reconcile storagenode", "key", key)
+
+	_, exists, err := c.nodeInf.GetStore().GetByKey(key)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		// TODO(fabxc): we want to do server side deletion due to the variety of
+		// resources we create.
+		// Doing so just based on the deletion event is not reliable, so
+		// we have to garbage collect the controller-created resources in some other way.
+		//
+		// Let's rely on the index key matching that of the created configmap and replica
+		// set for now. This does not work if we delete Prometheus resources as the
+		// controller is not running – that could be solved via garbage collection later.
+		return c.deleteStorageNode(s)
+	}
+
+	dsetClient := c.kclient.ExtensionsV1beta1().Deployments(s.Namespace)
+	// Ensure we have a replica set running Prometheus deployed.
+	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
+	deployment := &v1beta1.Deployment{}
+	deployment.Namespace = s.Namespace
+	deployment.Name = s.Name
+	obj, exists, err := c.dsetInf.GetStore().Get(deployment)
+	if err != nil {
+		return err
+	}
+
+	if !exists {
+		ds, err := c.storage.MakeDeployment(s, nil)
+		if err != nil {
+			return err
+		}
+		if _, err := dsetClient.Create(ds); err != nil {
+			return fmt.Errorf("create deployment: %s", err)
+		}
+	} else {
+		// Update
+		ds, err := c.storage.MakeDeployment(s, obj.(*v1beta1.Deployment))
+		if err != nil {
+			return err
+		}
+		// TODO(barakmich): This may be broken for DaemonSets.
+		// Will be fixed when DaemonSets do rolling updates.
+		if _, err := dsetClient.Update(ds); err != nil {
+			return err
+		}
+	}
+
+	return c.updateStatus()
+}
+
 func (c *Operator) updateStatus() error {
 	// TODO(barakmich): Call into c.storage.GetStatus()
 	return nil
@@ -338,7 +451,7 @@ func ListOptions(name string) v1.ListOptions {
 
 func (c *Operator) deleteStorageNode(s *spec.StorageNode) error {
 	// Update the replica count to 0 and wait for all pods to be deleted.
-	dsetClient := c.kclient.ExtensionsV1beta1().DaemonSets(s.Namespace)
+	dsetClient := c.kclient.ExtensionsV1beta1().Deployments(s.Namespace)
 
 	return dsetClient.DeleteCollection(nil, ListOptions(s.Name))
 }
@@ -367,18 +480,22 @@ func (c *Operator) createTPRs() error {
 	tprClient := c.kclient.Extensions().ThirdPartyResources()
 
 	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
+		_, err := tprClient.Create(tpr)
+		if apierrors.IsAlreadyExists(err) {
+			c.logger.Log("msg", "TPR already registered", "tpr", tpr.Name)
+		} else if err != nil {
 			return err
+		} else {
+			c.logger.Log("msg", "TPR created", "tpr", tpr.Name)
 		}
-		c.logger.Log("msg", "TPR created", "tpr", tpr.Name)
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	err := WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, TPRStorageNodeKind)
+	err := WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, PluralTPRStorageNodeKind)
 	if err != nil {
 		return err
 	}
-	return WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, TPRStorageStatusKind)
+	return WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, PluralTPRStorageStatusKind)
 }
 
 func newClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientConfig) (*rest.Config, error) {

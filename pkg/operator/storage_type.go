@@ -23,6 +23,7 @@ import (
 type StorageType interface {
 	Init() error
 	MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*v1beta1.DaemonSet, error)
+	MakeDeployment(s *spec.StorageNode, old *v1beta1.Deployment) (*v1beta1.Deployment, error)
 	AddNode(s *spec.StorageNode) error
 	GetStatus(s *spec.StorageNode) (*spec.StorageStatus, error)
 }
