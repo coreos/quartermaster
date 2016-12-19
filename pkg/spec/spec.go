@@ -15,38 +15,116 @@
 package spec
 
 import (
-	"k8s.io/client-go/pkg/api/v1"
-	metav1 "k8s.io/client-go/pkg/apis/meta/v1"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
 // StorageNode defines a single instance of available storage on a
 // node and the appropriate options to apply to it to make it available
 // to the cluster.
 type StorageNode struct {
-	metav1.TypeMeta `json:",inline"`
-	v1.ObjectMeta   `json:"metadata,omitempty"`
-	Spec            StorageNodeSpec `json:"spec"`
+	unversioned.TypeMeta `json:",inline"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
+	Spec                 StorageNodeSpec `json:"spec,omitempty"`
+
+	// Status represents the current status of the storage node
+	// +optional
+	Status StorageNodeStatus `json:"status,omitempty"`
+}
+
+type StorageCluster struct {
+	unversioned.TypeMeta `json:",inline"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
+	Spec                 StorageClusterSpec `json:"spec,omitempty"`
+
+	// Status represents the current status of the storage node
+	// +optional
+	Status StorageClusterStatus `json:"status,omitempty"`
 }
 
 // StorageNodeList is a list of StorageNode objects in Kubernetes.
 type StorageNodeList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
+	unversioned.TypeMeta `json:",inline"`
+	unversioned.ListMeta `json:"metadata,omitempty"`
 
-	Items []*StorageNode `json:"items"`
+	Items []StorageNode `json:"items"`
+}
+
+type StorageClusterList struct {
+	unversioned.TypeMeta `json:",inline"`
+	unversioned.ListMeta `json:"metadata,omitempty"`
+
+	Items []StorageCluster `json:"items"`
+}
+
+type StorageType string
+
+const (
+	StorageTypeNFS       StorageType = "nfs"
+	StorageTypeGlusterFS StorageType = "glusterfs"
+	StorageTypeTorus     StorageType = "torus"
+)
+
+type StorageClusterSpec struct {
+	// Software define storage type
+	Type StorageType `json:"type"`
+
+	// Specific image to use on all nodes of the cluster.  If not avaiable,
+	// it defaults to the image from QuarterMaster
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// All nodes participating in this cluster
+	StorageNodes []StorageNodeSpec `json:"storageNodes,omitempty"`
+
+	// Add storage specific section here
 }
 
 // StorageNodeSpec holds specification parameters for a StorageNode.
 type StorageNodeSpec struct {
-	Image          string              `json:"image,omitempty"` // Non-default container image to use for this storage node.
-	Type           string              `json:"type"`            // Storage Implementation to use atop this storage.
-	NodeSelector   map[string]string   `json:"nodeSelector"`
-	StorageNetwork *StorageNodeNetwork `json:"storageNetwork"`
-	Devices        []string            `json:"devices"`     // Raw block devices available on the StorageNode to be used for storage.
-	Directories    []string            `json:"directories"` // Directory-based storage available on the StorageNode to be used for storage.
-	GlusterFS      *GlusterStorageNode `json:"glusterfs"`
-	Torus          *TorusStorageNode   `json:"torus"`
-	NFS            *NFSStorageNode     `json:"nfs"`
+	// Specific image to use on the storage node requested.  If not avaiable,
+	// it defaults to the StorageCluster image.
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// The node belongs to the cluster with the specified label
+	Selector map[string]string `json:"selector"`
+
+	// Name of node
+	// Must have set either Node or NodeSelector
+	// +optional
+	NodeName string `json:"nodeName,omitempty"`
+
+	// Node label to match
+	// Must have either Node or NodeSelector
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Storage network if any
+	StorageNetwork *StorageNodeNetwork `json:"storageNetwork,omitempty"`
+
+	// Raw block devices available on the StorageNode to be used for storage.
+	// Devices or Directories must be set and their use are specific to
+	// the implementation
+	// Must have set either Devices or Directories
+	// +optional
+	Devices []string `json:"devices,omitempty"`
+
+	// Directory-based storage available on the StorageNode to be used for storage.
+	// Devices or Directories must be set and their use are specific to
+	// the implementation
+	// Must have set either Devices or Directories
+	// +optional
+	Directories []string `json:"directories,omitempty"`
+
+	// References the StorageCluster when bound to a cluster.  This is
+	// when StorageCluster submits the StorageNode.
+	ClusterRef *api.ObjectReference `json:"clusterRef,omitempty"`
+
+	// Storage system settings
+	GlusterFS *GlusterStorageNode `json:"glusterfs,omitempty"`
+	Torus     *TorusStorageNode   `json:"torus,omitempty"`
+	NFS       *NFSStorageNode     `json:"nfs,omitempty"`
 }
 
 // StorageNodeNetwork specifies which network interfaces the StorageNode should
@@ -77,7 +155,64 @@ type NFSStorageNode struct {
 
 // StorageStatus reports on the status of a storage deployment backend.
 type StorageStatus struct {
-	metav1.TypeMeta `json:",inline"`
-	v1.ObjectMeta   `json:"metadata,omitempty"`
-	Details         map[string]string `json:"details"`
+	// TODO(lpabon): This may be removed and replaced by StorageClusterStatus
+	unversioned.TypeMeta `json:",inline"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
+	Details              map[string]string      `json:"details,omitempty"`
+	ClusterStatuses      []StorageClusterStatus `json:"clusterStatuses,omitempty"`
+}
+
+type StatusCondition struct {
+	Time    unversioned.Time `json:"time,omitempty"`
+	Message string           `json:"message,omitempty"`
+	Reason  string           `json:"reason,omitempty"`
+}
+
+type StatusInfo struct {
+	Ready bool `json:"ready"`
+
+	// The following follow the same definition as PodStatus
+	Message string `json:"message,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+type StorageClusterConditionType string
+
+const (
+	ClusterConditionReady   StorageClusterConditionType = "Ready"
+	ClusterConditionOffline StorageClusterConditionType = "Offline"
+)
+
+type StorageClusterCondition struct {
+	StatusCondition
+	Type StorageClusterConditionType `json:"type,omitempty"`
+}
+
+type StorageNodeConditionType string
+
+const (
+	NodeConditionReady   StorageNodeConditionType = "Ready"
+	NodeConditionOffline StorageNodeConditionType = "Offline"
+)
+
+type StorageNodeCondition struct {
+	StatusCondition
+	Type StorageNodeConditionType `json:"type,omitempty"`
+}
+
+type StorageClusterStatus struct {
+	StatusInfo
+	Conditions   []StorageClusterCondition `json:"conditions,omitempty"`
+	NodeStatuses []StorageNodeStatus       `json:"nodeStatuses,omitempty"`
+
+	// Add storage specific status
+}
+
+type StorageNodeStatus struct {
+	StatusInfo
+	Conditions []StorageNodeCondition `json:"conditions,omitempty"`
+	PodName    string                 `json:"podName,omitempty"`
+	NodeName   string                 `json:"nodeName,omitempty"`
+
+	// Add storage specific status
 }

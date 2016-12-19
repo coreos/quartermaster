@@ -2,37 +2,61 @@ package nfs
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/levels"
+
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/extensions"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
-func New(client *kubernetes.Clientset) (operator.StorageType, error) {
-	return &Storage{
+var (
+	logger levels.Levels
+)
+
+func init() {
+	logger = levels.New(log.NewContext(log.NewLogfmtLogger(os.Stdout)).
+		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
+}
+
+func New(client *clientset.Clientset) (operator.StorageType, error) {
+	s := &NfsStorage{
 		client: client,
+	}
+
+	return &operator.StorageHandlerFuncs{
+		StorageHandler:     s,
+		InitFunc:           s.Init,
+		MakeDeploymentFunc: s.MakeDeployment,
+		AddNodeFunc:        s.AddNode,
+		UpdateNodeFunc:     s.UpdateNode,
+		DeleteNodeFunc:     s.DeleteNode,
+		GetStatusFunc:      s.GetStatus,
 	}, nil
 }
 
-type Storage struct {
-	client *kubernetes.Clientset
+type NfsStorage struct {
+	client *clientset.Clientset
 }
 
-var _ operator.StorageType = &Storage{}
-
-func (st *Storage) Init() error {
+func (st *NfsStorage) Init() error {
 	// Nothing to initialize, no external managing containers to check, very simple.
 	return nil
 }
 
-func (st *Storage) MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*v1beta1.DaemonSet, error) {
+func (st *NfsStorage) MakeDeployment(c *spec.StorageCluster,
+	s *spec.StorageNode,
+	old *extensions.Deployment) (*extensions.Deployment, error) {
+
 	if s.Spec.Image == "" {
 		s.Spec.Image = "quay.io/luis_pabon0/ganesha:latest"
 	}
-	spec, err := st.makeDaemonSetSpec(s)
+	spec, err := st.makeDeploymentSpec(s)
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +65,8 @@ func (st *Storage) MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*
 		lmap[k] = v
 	}
 	lmap["quartermaster"] = s.Name
-	ds := &v1beta1.DaemonSet{
-		ObjectMeta: v1.ObjectMeta{
+	deployment := &extensions.Deployment{
+		ObjectMeta: api.ObjectMeta{
 			Name:        s.Name,
 			Namespace:   s.Namespace,
 			Annotations: s.Annotations,
@@ -51,9 +75,9 @@ func (st *Storage) MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*
 		Spec: *spec,
 	}
 	if old != nil {
-		ds.Annotations = old.Annotations
+		deployment.Annotations = old.Annotations
 	}
-	return ds, nil
+	return deployment, nil
 }
 
 func dashifyPath(s string) string {
@@ -61,24 +85,24 @@ func dashifyPath(s string) string {
 	return strings.Replace(s, "/", "-", -1)
 }
 
-func (st *Storage) makeDaemonSetSpec(s *spec.StorageNode) (*v1beta1.DaemonSetSpec, error) {
+func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
 	if len(s.Spec.Devices) != 0 {
 		return nil, fmt.Errorf("NFS does not support raw device access")
 	}
-	var volumes []v1.Volume
-	var mounts []v1.VolumeMount
+	var volumes []api.Volume
+	var mounts []api.VolumeMount
 
 	for _, path := range s.Spec.Directories {
 		dash := dashifyPath(path)
-		volumes = append(volumes, v1.Volume{
+		volumes = append(volumes, api.Volume{
 			Name: dash,
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
+			VolumeSource: api.VolumeSource{
+				HostPath: &api.HostPathVolumeSource{
 					Path: path,
 				},
 			},
 		})
-		mounts = append(mounts, v1.VolumeMount{
+		mounts = append(mounts, api.VolumeMount{
 			Name:      dash,
 			MountPath: path,
 		})
@@ -86,40 +110,42 @@ func (st *Storage) makeDaemonSetSpec(s *spec.StorageNode) (*v1beta1.DaemonSetSpe
 
 	privileged := true
 
-	spec := &v1beta1.DaemonSetSpec{
-		Template: v1.PodTemplateSpec{
-			ObjectMeta: v1.ObjectMeta{
+	spec := &extensions.DeploymentSpec{
+		Replicas: 1,
+		Template: api.PodTemplateSpec{
+			ObjectMeta: api.ObjectMeta{
 				Labels: map[string]string{
-					"nfs-ganesha-node": "daemonset",
+					"nfs-ganesha-node": s.Name,
+					"quartermaster":    s.Name,
 				},
-				Name: "nfs-ganesha",
+				Name: s.Name,
 			},
-			Spec: v1.PodSpec{
+			Spec: api.PodSpec{
 				NodeSelector: s.Spec.NodeSelector,
-				Containers: []v1.Container{
-					v1.Container{
+				Containers: []api.Container{
+					api.Container{
 						Name:            s.Name,
 						Image:           s.Spec.Image,
-						ImagePullPolicy: v1.PullIfNotPresent,
+						ImagePullPolicy: api.PullIfNotPresent,
 						VolumeMounts:    mounts,
-						SecurityContext: &v1.SecurityContext{
+						SecurityContext: &api.SecurityContext{
 							Privileged: &privileged,
 						},
 
-						Ports: []v1.ContainerPort{
-							v1.ContainerPort{
+						Ports: []api.ContainerPort{
+							api.ContainerPort{
 								Name:          "nfs",
 								ContainerPort: 2049,
 								//TODO(barakmich)
 								// HostIP: <get IP from spec>
 							},
-							v1.ContainerPort{
+							api.ContainerPort{
 								Name:          "mountd",
 								ContainerPort: 20048,
 								//TODO(barakmich)
 								// HostIP: <get IP from spec>
 							},
-							v1.ContainerPort{
+							api.ContainerPort{
 								Name:          "rpcbind",
 								ContainerPort: 111,
 								//TODO(barakmich)
@@ -135,11 +161,23 @@ func (st *Storage) makeDaemonSetSpec(s *spec.StorageNode) (*v1beta1.DaemonSetSpe
 	return spec, nil
 }
 
-func (st *Storage) AddNode(s *spec.StorageNode) error {
-	return fmt.Errorf("Trying to add another node to an NFS storage set '%s'. NFS is not distributed.", s.Name)
+func (st *NfsStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
+	return nil, nil
 }
 
-func (st *Storage) GetStatus(s *spec.StorageNode) (*spec.StorageStatus, error) {
+func (st *NfsStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
+	return nil, nil
+}
+
+func (st *NfsStorage) DeleteNode(c *spec.StorageCluster, s *spec.StorageNode) error {
+	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
+	return nil
+}
+
+func (st *NfsStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
+	logger.Debug().Log("msg", "status", "cluster", c.Name)
 	status := &spec.StorageStatus{}
 	return status, nil
 }

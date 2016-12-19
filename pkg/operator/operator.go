@@ -1,4 +1,4 @@
-// Copyright 2016 The prometheus-operator Authors
+// Copyright 2016 The quartermaster Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,42 +23,29 @@ import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 
 	"github.com/go-kit/kit/log"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api"
-	apierrors "k8s.io/client-go/pkg/api/errors"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
-	"k8s.io/client-go/pkg/labels"
-	utilruntime "k8s.io/client-go/pkg/util/runtime"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
-)
 
-const (
-	TPRGroup   = "storage.coreos.com"
-	TPRVersion = "v1alpha1"
-
-	TPRStorageNodeKind   = "storagenode"
-	TPRStorageStatusKind = "storagestatus"
-
-	PluralTPRStorageNodeKind   = TPRStorageNodeKind + "s"
-	PluralTPRStorageStatusKind = TPRStorageStatusKind + "es"
-
-	tprStorageNode   = "storage-node." + TPRGroup
-	tprStorageStatus = "storage-status." + TPRGroup
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/client/cache"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/kubectl"
+	"k8s.io/kubernetes/pkg/labels"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 // Operator manages lify cycle of Prometheus deployments and
 // monitoring configurations.
 type Operator struct {
-	kclient *kubernetes.Clientset
-	rclient *rest.RESTClient
+	kclient *clientset.Clientset
+	rclient *restclient.RESTClient
 	logger  log.Logger
 
 	storage StorageType
 
-	nodeInf cache.SharedIndexInformer
-	dsetInf cache.SharedIndexInformer
+	nodeInf   cache.SharedIndexInformer
+	dsetInf   cache.SharedIndexInformer
+	clusterOp StorageOperator
 
 	queue *queue
 
@@ -69,7 +56,7 @@ type Operator struct {
 type Config struct {
 	Host        string
 	TLSInsecure bool
-	TLSConfig   rest.TLSClientConfig
+	TLSConfig   restclient.TLSClientConfig
 }
 
 // New creates a new controller.
@@ -78,7 +65,7 @@ func New(c Config, storage StorageTypeNewFunc) (*Operator, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := kubernetes.NewForConfig(cfg)
+	client, err := clientset.NewForConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -107,27 +94,37 @@ func New(c Config, storage StorageTypeNewFunc) (*Operator, error) {
 // Run the controller.
 func (c *Operator) Run(stopc <-chan struct{}) error {
 	defer c.queue.close()
+
+	// Start notification worker
 	go c.worker()
 
+	// :TODO: (lpabon) This needs to be orginized better
+	//         with the other worker.
+	// go c.clusterWorker()
+	c.clusterOp = NewStorageClusterOperator(c)
+	c.clusterOp.Setup(stopc)
+
+	// Test communication with server
 	v, err := c.kclient.Discovery().ServerVersion()
 	if err != nil {
 		return fmt.Errorf("communicating with server failed: %s", err)
 	}
 	c.logger.Log("msg", "connection established", "cluster-version", v)
 
+	// Create ThirdPartyResources
 	if err := c.createTPRs(); err != nil {
 		return c.logger.Log("msg", "unable to create tpr", "err", err)
 	}
 
+	// Create notification objects
 	c.nodeInf = cache.NewSharedIndexInformer(
 		NewStorageNodeListWatch(c.rclient),
-		&spec.StorageNode{}, resyncPeriod, cache.Indexers{},
-	)
+		&spec.StorageNode{}, resyncPeriod, cache.Indexers{})
 	c.dsetInf = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(c.kclient.ExtensionsV1beta1().RESTClient(), "daemonsets", api.NamespaceAll, nil),
-		&v1beta1.DaemonSet{}, resyncPeriod, cache.Indexers{},
-	)
+		cache.NewListWatchFromClient(c.kclient.Extensions().RESTClient(), "deployments", api.NamespaceAll, nil),
+		&extensions.Deployment{}, resyncPeriod, cache.Indexers{})
 
+	// Register Handlers
 	c.logger.Log("msg", "Register event handlers")
 	c.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(p interface{}) {
@@ -145,16 +142,16 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	})
 	c.dsetInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(d interface{}) {
-			c.logger.Log("msg", "addDaemonSet", "trigger", "ds add")
-			c.addDaemonSet(d)
+			c.logger.Log("msg", "addDeployment", "trigger", "deployment add")
+			c.addDeployment(d)
 		},
 		DeleteFunc: func(d interface{}) {
-			c.logger.Log("msg", "deleteDaemonSet", "trigger", "ds delete")
-			c.deleteDaemonSet(d)
+			c.logger.Log("msg", "deleteDeployment", "trigger", "deployment delete")
+			c.deleteDeployment(d)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			c.logger.Log("msg", "updateDaemonSet", "trigger", "ds update")
-			c.updateDaemonSet(old, cur)
+			c.logger.Log("msg", "updateDeployment", "trigger", "deployment update")
+			c.updateDeployment(old, cur)
 		},
 	})
 
@@ -162,7 +159,9 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	go c.dsetInf.Run(stopc)
 
 	c.logger.Log("msg", "Waiting for sync")
-	for !c.nodeInf.HasSynced() || !c.dsetInf.HasSynced() {
+	for !c.nodeInf.HasSynced() ||
+		!c.dsetInf.HasSynced() ||
+		!c.clusterOp.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
 	}
 	c.logger.Log("msg", "Sync done")
@@ -221,7 +220,7 @@ func (c *Operator) worker() {
 	}
 }
 
-func (c *Operator) storageNodeForDeployment(d *v1beta1.DaemonSet) *spec.StorageNode {
+func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
 	key, err := keyFunc(d)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("creating key: %s", err))
@@ -239,23 +238,23 @@ func (c *Operator) storageNodeForDeployment(d *v1beta1.DaemonSet) *spec.StorageN
 	return s.(*spec.StorageNode)
 }
 
-func (c *Operator) deleteDaemonSet(o interface{}) {
-	d := o.(*v1beta1.DaemonSet)
+func (c *Operator) deleteDeployment(o interface{}) {
+	d := o.(*extensions.Deployment)
 	if s := c.storageNodeForDeployment(d); s != nil {
 		c.enqueueStorageNode(s)
 	}
 }
 
-func (c *Operator) addDaemonSet(o interface{}) {
-	d := o.(*v1beta1.DaemonSet)
+func (c *Operator) addDeployment(o interface{}) {
+	d := o.(*extensions.Deployment)
 	if s := c.storageNodeForDeployment(d); s != nil {
 		c.enqueueStorageNode(s)
 	}
 }
 
-func (c *Operator) updateDaemonSet(oldo, curo interface{}) {
-	old := oldo.(*v1beta1.DaemonSet)
-	cur := curo.(*v1beta1.DaemonSet)
+func (c *Operator) updateDeployment(oldo, curo interface{}) {
+	old := oldo.(*extensions.Deployment)
+	cur := curo.(*extensions.Deployment)
 
 	c.logger.Log("msg", "update handler", "old", old.ResourceVersion, "cur", cur.ResourceVersion)
 
@@ -290,37 +289,70 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		// Let's rely on the index key matching that of the created configmap and replica
 		// set for now. This does not work if we delete Prometheus resources as the
 		// controller is not running – that could be solved via garbage collection later.
-		return c.deleteStorageNode(s)
+		err := c.storage.DeleteNode(&spec.StorageCluster{}, s)
+		if err != nil {
+			return c.logger.Log("err", err)
+		}
+
+		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.kclient)
+		if err != nil {
+			return c.logger.Log("err", err)
+		}
+
+		err = reaper.Stop(s.Namespace, s.Name, time.Minute, api.NewDeleteOptions(0))
+		if err != nil {
+			return c.logger.Log("err", err)
+		}
+
 	}
 
-	dsetClient := c.kclient.ExtensionsV1beta1().DaemonSets(s.Namespace)
+	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
 	// Ensure we have a replica set running Prometheus deployed.
 	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
-	psetQ := &v1beta1.DaemonSet{}
-	psetQ.Namespace = s.Namespace
-	psetQ.Name = s.Name
-	obj, exists, err := c.dsetInf.GetStore().Get(psetQ)
+	deployment := &extensions.Deployment{}
+	deployment.Namespace = s.Namespace
+	deployment.Name = s.Name
+	obj, exists, err := c.dsetInf.GetStore().Get(deployment)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		ds, err := c.storage.MakeDaemonSet(s, nil)
+		ds, err := c.storage.MakeDeployment(&spec.StorageCluster{}, s, nil)
 		if err != nil {
 			return err
 		}
 		if _, err := dsetClient.Create(ds); err != nil {
-			return fmt.Errorf("create daemonset: %s", err)
+			return fmt.Errorf("create deployment: %s", err)
 		}
+
+		// :TODO: Wait until it is ready
+
+		// Add node
+		_, err = c.storage.AddNode(&spec.StorageCluster{}, s)
+		if err != nil {
+			// :TODO: Clean up and delete Deployment
+
+			return err
+		}
+
 	} else {
 		// Update
-		ds, err := c.storage.MakeDaemonSet(s, obj.(*v1beta1.DaemonSet))
+		ds, err := c.storage.MakeDeployment(&spec.StorageCluster{},
+			s,
+			obj.(*extensions.Deployment))
 		if err != nil {
 			return err
 		}
 		// TODO(barakmich): This may be broken for DaemonSets.
 		// Will be fixed when DaemonSets do rolling updates.
 		if _, err := dsetClient.Update(ds); err != nil {
+			return err
+		}
+
+		// Update Node
+		_, err = c.storage.UpdateNode(&spec.StorageCluster{}, s)
+		if err != nil {
 			return err
 		}
 	}
@@ -333,74 +365,25 @@ func (c *Operator) updateStatus() error {
 	return nil
 }
 
-func ListOptions(name string) v1.ListOptions {
+func ListOptions(name string) api.ListOptions {
 	s := labels.SelectorFromSet(map[string]string{
 		"quartermaster": name,
 	})
-	return v1.ListOptions{
-		LabelSelector: s.String(),
+	return api.ListOptions{
+		LabelSelector: s,
 	}
 }
 
-func (c *Operator) deleteStorageNode(s *spec.StorageNode) error {
-	// Update the replica count to 0 and wait for all pods to be deleted.
-	dsetClient := c.kclient.ExtensionsV1beta1().DaemonSets(s.Namespace)
-
-	return dsetClient.DeleteCollection(nil, ListOptions(s.Name))
-}
-
-func (c *Operator) createTPRs() error {
-	tprs := []*v1beta1.ThirdPartyResource{
-		{
-			ObjectMeta: v1.ObjectMeta{
-				Name: tprStorageStatus,
-			},
-			Versions: []v1beta1.APIVersion{
-				{Name: TPRVersion},
-			},
-			Description: "Status reports from Quartermaster managed storage",
-		},
-		{
-			ObjectMeta: v1.ObjectMeta{
-				Name: tprStorageNode,
-			},
-			Versions: []v1beta1.APIVersion{
-				{Name: TPRVersion},
-			},
-			Description: "Managed storage nodes via Quartermaster",
-		},
-	}
-	tprClient := c.kclient.Extensions().ThirdPartyResources()
-
-	for _, tpr := range tprs {
-		_, err := tprClient.Create(tpr)
-		if apierrors.IsAlreadyExists(err) {
-			c.logger.Log("msg", "TPR already registered", "tpr", tpr.Name)
-		} else if err != nil {
-			return err
-		} else {
-			c.logger.Log("msg", "TPR created", "tpr", tpr.Name)
-		}
-	}
-
-	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	err := WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, PluralTPRStorageNodeKind)
-	if err != nil {
-		return err
-	}
-	return WaitForTPRReady(c.kclient.CoreV1Client.RESTClient(), TPRGroup, TPRVersion, PluralTPRStorageStatusKind)
-}
-
-func newClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientConfig) (*rest.Config, error) {
-	var cfg *rest.Config
+func newClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSClientConfig) (*restclient.Config, error) {
+	var cfg *restclient.Config
 	var err error
 
 	if len(host) == 0 {
-		if cfg, err = rest.InClusterConfig(); err != nil {
+		if cfg, err = restclient.InClusterConfig(); err != nil {
 			return nil, err
 		}
 	} else {
-		cfg = &rest.Config{
+		cfg = &restclient.Config{
 			Host: host,
 		}
 		hostURL, err := url.Parse(host)

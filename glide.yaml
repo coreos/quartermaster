@@ -3,20 +3,24 @@ import:
 - package: github.com/go-kit/kit
   subpackages:
   - log
-- package: k8s.io/client-go
+  - log/levels
+- package: k8s.io/kubernetes
+  version: v1.5.1
   subpackages:
-  - kubernetes
   - pkg/api
   - pkg/api/errors
+  - pkg/api/unversioned
   - pkg/api/v1
+  - pkg/apis/extensions
   - pkg/apis/extensions/v1beta1
-  - pkg/apis/meta/v1
+  - pkg/api/meta
+  - pkg/client/cache
+  - pkg/client/clientset_generated/internalclientset
+  - pkg/client/restclient
+  - pkg/kubectl
   - pkg/labels
   - pkg/runtime
-  - pkg/runtime/schema
   - pkg/runtime/serializer
   - pkg/util/runtime
   - pkg/util/wait
   - pkg/watch
-  - rest
-  - tools/cache

@@ -1,0 +1,11 @@
+apiVersion: storage.coreos.com/v1alpha1
+kind: StorageCluster
+metadata:
+    name: nfs1
+spec:
+    type: nfs
+    storageNodes:
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-169.us-west-2.compute.internal
+          directories:
+              - /export
