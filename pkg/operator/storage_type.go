@@ -16,15 +16,31 @@ package operator
 
 import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	"k8s.io/kubernetes/pkg/apis/extensions"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
-type StorageType interface {
-	Init() error
-	MakeDaemonSet(s *spec.StorageNode, old *v1beta1.DaemonSet) (*v1beta1.DaemonSet, error)
-	AddNode(s *spec.StorageNode) error
-	GetStatus(s *spec.StorageNode) (*spec.StorageStatus, error)
+type StorageClusterInterface interface {
+	AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error)
+	UpdateCluster(old *spec.StorageCluster, new *spec.StorageCluster) error
+	DeleteCluster(c *spec.StorageCluster) error
 }
 
-type StorageTypeNewFunc func(*kubernetes.Clientset) (StorageType, error)
+type StorageNodeInterface interface {
+	MakeDeployment(c *spec.StorageCluster,
+		s *spec.StorageNode,
+		old *extensions.Deployment) (*extensions.Deployment, error)
+	AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
+	UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
+	DeleteNode(c *spec.StorageCluster, s *spec.StorageNode) error
+}
+
+type StorageType interface {
+	StorageClusterInterface
+	StorageNodeInterface
+
+	Init() error
+	GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error)
+}
+
+type StorageTypeNewFunc func(*clientset.Clientset) (StorageType, error)

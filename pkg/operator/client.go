@@ -20,27 +20,26 @@ import (
 
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/runtime"
-	"k8s.io/client-go/pkg/runtime/schema"
-	"k8s.io/client-go/pkg/runtime/serializer"
-	"k8s.io/client-go/pkg/watch"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/runtime/serializer"
+	"k8s.io/kubernetes/pkg/watch"
 )
 
 const resyncPeriod = 5 * time.Minute
 
-func newQuartermasterRESTClient(c rest.Config) (*rest.RESTClient, error) {
+func newQuartermasterRESTClient(c restclient.Config) (*restclient.RESTClient, error) {
 	c.APIPath = "/apis"
-	c.GroupVersion = &schema.GroupVersion{
+	c.GroupVersion = &unversioned.GroupVersion{
 		Group:   "storage.coreos.com",
 		Version: "v1alpha1",
 	}
 	// TODO(fabxc): is this even used with our custom list/watch functions?
 	c.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: api.Codecs}
-	return rest.RESTClientFor(&c)
+	return restclient.RESTClientFor(&c)
 }
 
 type storageNodeDecoder struct {
@@ -63,10 +62,25 @@ func (d *storageNodeDecoder) Decode() (action watch.EventType, object runtime.Ob
 	return e.Type, &e.Object, nil
 }
 
+type storageClusterDecoder struct {
+	storageNodeDecoder
+}
+
+func (d *storageClusterDecoder) Decode() (action watch.EventType, object runtime.Object, err error) {
+	var e struct {
+		Type   watch.EventType
+		Object spec.StorageCluster
+	}
+	if err := d.dec.Decode(&e); err != nil {
+		return watch.Error, nil, err
+	}
+	return e.Type, &e.Object, nil
+}
+
 // NewStorageNodeListWatch returns a new ListWatch on the StorageNode resource.
-func NewStorageNodeListWatch(client *rest.RESTClient) *cache.ListWatch {
+func NewStorageNodeListWatch(client *restclient.RESTClient) *cache.ListWatch {
 	return &cache.ListWatch{
-		ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
+		ListFunc: func(options api.ListOptions) (runtime.Object, error) {
 			req := client.Get().
 				Namespace(api.NamespaceAll).
 				Resource("storagenodes").
@@ -80,7 +94,7 @@ func NewStorageNodeListWatch(client *rest.RESTClient) *cache.ListWatch {
 			var p spec.StorageNodeList
 			return &p, json.Unmarshal(b, &p)
 		},
-		WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
+		WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
 			r, err := client.Get().
 				Prefix("watch").
 				Namespace(api.NamespaceAll).
@@ -94,6 +108,44 @@ func NewStorageNodeListWatch(client *rest.RESTClient) *cache.ListWatch {
 			return watch.NewStreamWatcher(&storageNodeDecoder{
 				dec:   json.NewDecoder(r),
 				close: r.Close,
+			}), nil
+		},
+	}
+}
+
+// NewStorageClusterListWatch returns a new ListWatch on the StorageCluster resource.
+func NewStorageClusterListWatch(client *restclient.RESTClient) *cache.ListWatch {
+	return &cache.ListWatch{
+		ListFunc: func(options api.ListOptions) (runtime.Object, error) {
+			req := client.Get().
+				Namespace(api.NamespaceAll).
+				Resource("storageclusters").
+				// VersionedParams(&options, api.ParameterCodec)
+				FieldsSelectorParam(nil)
+
+			b, err := req.DoRaw()
+			if err != nil {
+				return nil, err
+			}
+			var p spec.StorageClusterList
+			return &p, json.Unmarshal(b, &p)
+		},
+		WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
+			r, err := client.Get().
+				Prefix("watch").
+				Namespace(api.NamespaceAll).
+				Resource("storageclusters").
+				// VersionedParams(&options, api.ParameterCodec).
+				FieldsSelectorParam(nil).
+				Stream()
+			if err != nil {
+				return nil, err
+			}
+			return watch.NewStreamWatcher(&storageClusterDecoder{
+				storageNodeDecoder: storageNodeDecoder{
+					dec:   json.NewDecoder(r),
+					close: r.Close,
+				},
 			}), nil
 		},
 	}
