@@ -290,6 +290,9 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 }
 
 func (c *Operator) reconcile(s *spec.StorageNode) error {
+	// XXX
+	clusterSpec := &spec.StorageCluster{}
+
 	key, err := keyFunc(s)
 	if err != nil {
 		return err
@@ -301,6 +304,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		return err
 	}
 
+	// Get plugin
 	storage, err := c.GetStorage(s.Spec.Type)
 	if err != nil {
 		return err
@@ -315,7 +319,8 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		// Let's rely on the index key matching that of the created configmap and replica
 		// set for now. This does not work if we delete Prometheus resources as the
 		// controller is not running – that could be solved via garbage collection later.
-		err := storage.DeleteNode(&spec.StorageCluster{}, s)
+
+		err := storage.DeleteNode(s)
 		if err != nil {
 			return c.logger.Log("err", err)
 		}
@@ -329,7 +334,6 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		if err != nil {
 			return c.logger.Log("err", err)
 		}
-
 	}
 
 	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
@@ -346,21 +350,18 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	if !exists {
 
 		// Get a deployment from plugin
-		ds, err := storage.MakeDeployment(&spec.StorageCluster{}, s, nil)
+		ds, err := storage.MakeDeployment(clusterSpec, s, nil)
 		if err != nil {
 			return err
 		}
 
-		// Plugin may not need a deployment
-		if ds != nil {
-			if _, err := dsetClient.Create(ds); err != nil {
-				return fmt.Errorf("create deployment: %s", err)
-			}
+		if _, err := dsetClient.Create(ds); err != nil {
+			return fmt.Errorf("create deployment: %s", err)
 		}
 		// :TODO: Wait until it is ready
 
 		// Add node
-		_, err = storage.AddNode(&spec.StorageCluster{}, s)
+		_, err = storage.AddNode(clusterSpec, s)
 		if err != nil {
 			// :TODO: Clean up and delete Deployment
 
@@ -369,24 +370,21 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 
 	} else {
 		// Update
-		ds, err := storage.MakeDeployment(&spec.StorageCluster{},
+		ds, err := storage.MakeDeployment(clusterSpec,
 			s,
 			obj.(*extensions.Deployment))
 		if err != nil {
 			return err
 		}
 
-		// Plugin may not need a deployment
-		if ds != nil {
-			// TODO(barakmich): This may be broken for DaemonSets.
-			// Will be fixed when DaemonSets do rolling updates.
-			if _, err := dsetClient.Update(ds); err != nil {
-				return err
-			}
+		// TODO(barakmich): This may be broken for DaemonSets.
+		// Will be fixed when DaemonSets do rolling updates.
+		if _, err := dsetClient.Update(ds); err != nil {
+			return err
 		}
 
 		// Update Node
-		_, err = storage.UpdateNode(&spec.StorageCluster{}, s)
+		_, err = storage.UpdateNode(clusterSpec, s)
 		if err != nil {
 			return err
 		}

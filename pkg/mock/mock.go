@@ -16,12 +16,14 @@ package mock
 
 import (
 	"os"
+	"strings"
 
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/levels"
 
+	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
@@ -84,7 +86,79 @@ func (st *MockStorage) MakeDeployment(c *spec.StorageCluster,
 	s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
 	logger.Debug().Log("msg", "make deployment", "node", s.Name)
-	return nil, nil
+
+	if s.Spec.Image == "" {
+		s.Spec.Image = "nginx"
+	}
+	spec, err := st.makeDeploymentSpec(s)
+	if err != nil {
+		return nil, err
+	}
+	lmap := make(map[string]string)
+	for k, v := range s.Labels {
+		lmap[k] = v
+	}
+	lmap["quartermaster"] = s.Name
+	deployment := &extensions.Deployment{
+		ObjectMeta: api.ObjectMeta{
+			Name:        s.Name,
+			Namespace:   s.Namespace,
+			Annotations: s.Annotations,
+			Labels:      lmap,
+		},
+		Spec: *spec,
+	}
+	if old != nil {
+		deployment.Annotations = old.Annotations
+	}
+	return deployment, nil
+}
+
+func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
+	var volumes []api.Volume
+	var mounts []api.VolumeMount
+
+	for _, path := range s.Spec.Directories {
+		dash := dashifyPath(path)
+		volumes = append(volumes, api.Volume{
+			Name: dash,
+			VolumeSource: api.VolumeSource{
+				HostPath: &api.HostPathVolumeSource{
+					Path: path,
+				},
+			},
+		})
+		mounts = append(mounts, api.VolumeMount{
+			Name:      dash,
+			MountPath: path,
+		})
+	}
+
+	spec := &extensions.DeploymentSpec{
+		Replicas: 1,
+		Template: api.PodTemplateSpec{
+			ObjectMeta: api.ObjectMeta{
+				Labels: map[string]string{
+					"nfs-ganesha-node": s.Name,
+					"quartermaster":    s.Name,
+				},
+				Name: s.Name,
+			},
+			Spec: api.PodSpec{
+				NodeSelector: s.Spec.NodeSelector,
+				Containers: []api.Container{
+					api.Container{
+						Name:            s.Name,
+						Image:           s.Spec.Image,
+						ImagePullPolicy: api.PullIfNotPresent,
+						VolumeMounts:    mounts,
+					},
+				},
+				Volumes: volumes,
+			},
+		},
+	}
+	return spec, nil
 }
 
 func (st *MockStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
@@ -97,7 +171,7 @@ func (st *MockStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (
 	return nil, nil
 }
 
-func (st *MockStorage) DeleteNode(c *spec.StorageCluster, s *spec.StorageNode) error {
+func (st *MockStorage) DeleteNode(s *spec.StorageNode) error {
 	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
 	return nil
 }
@@ -110,4 +184,9 @@ func (st *MockStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, e
 
 func (st *MockStorage) Type() spec.StorageTypeIdentifier {
 	return spec.StorageTypeIdentifierMock
+}
+
+func dashifyPath(s string) string {
+	s = strings.TrimLeft(s, "/")
+	return strings.Replace(s, "/", "-", -1)
 }

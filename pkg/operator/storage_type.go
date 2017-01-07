@@ -32,7 +32,7 @@ type StorageNodeInterface interface {
 		old *extensions.Deployment) (*extensions.Deployment, error)
 	AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
 	UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
-	DeleteNode(c *spec.StorageCluster, s *spec.StorageNode) error
+	DeleteNode(s *spec.StorageNode) error
 }
 
 type StorageType interface {

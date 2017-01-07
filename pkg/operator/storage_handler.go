@@ -32,7 +32,7 @@ type StorageHandlerFuncs struct {
 		old *extensions.Deployment) (*extensions.Deployment, error)
 	AddNodeFunc    func(c *spec.StorageCluster, n *spec.StorageNode) (*spec.StorageNode, error)
 	UpdateNodeFunc func(c *spec.StorageCluster, n *spec.StorageNode) (*spec.StorageNode, error)
-	DeleteNodeFunc func(c *spec.StorageCluster, n *spec.StorageNode) error
+	DeleteNodeFunc func(n *spec.StorageNode) error
 
 	InitFunc      func() error
 	GetStatusFunc func(c *spec.StorageCluster) (*spec.StorageStatus, error)
@@ -86,10 +86,9 @@ func (s StorageHandlerFuncs) UpdateNode(c *spec.StorageCluster,
 	return nil, nil
 }
 
-func (s StorageHandlerFuncs) DeleteNode(c *spec.StorageCluster,
-	n *spec.StorageNode) error {
+func (s StorageHandlerFuncs) DeleteNode(n *spec.StorageNode) error {
 	if s.DeleteNodeFunc != nil {
-		return s.DeleteNodeFunc(c, n)
+		return s.DeleteNodeFunc(n)
 	}
 	return nil
 }

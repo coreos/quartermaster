@@ -172,7 +172,7 @@ func (st *NfsStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*
 	return nil, nil
 }
 
-func (st *NfsStorage) DeleteNode(c *spec.StorageCluster, s *spec.StorageNode) error {
+func (st *NfsStorage) DeleteNode(s *spec.StorageNode) error {
 	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
 	return nil
 }
