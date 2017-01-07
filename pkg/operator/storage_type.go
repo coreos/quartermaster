@@ -41,6 +41,9 @@ type StorageType interface {
 
 	Init() error
 	GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error)
+
+	// Must be supplied
+	Type() spec.StorageTypeIdentifier
 }
 
 type StorageTypeNewFunc func(*clientset.Clientset) (StorageType, error)

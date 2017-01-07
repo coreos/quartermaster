@@ -31,6 +31,7 @@ func New(client *clientset.Clientset) (operator.StorageType, error) {
 
 	return &operator.StorageHandlerFuncs{
 		StorageHandler:     s,
+		TypeFunc:           s.Type,
 		InitFunc:           s.Init,
 		MakeDeploymentFunc: s.MakeDeployment,
 		AddNodeFunc:        s.AddNode,
@@ -180,4 +181,8 @@ func (st *NfsStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, er
 	logger.Debug().Log("msg", "status", "cluster", c.Name)
 	status := &spec.StorageStatus{}
 	return status, nil
+}
+
+func (st *NfsStorage) Type() spec.StorageTypeIdentifier {
+	return spec.StorageTypeIdentifierNFS
 }

@@ -88,11 +88,16 @@ func (s *StorageClusterOperator) add(cs *spec.StorageCluster) error {
 
 	*/
 
+	storage, err := s.op.GetStorage(cs.Spec.Type)
+	if err != nil {
+		return err
+	}
+
 	// Set default values
 	cs.Status.Ready = false
 
 	// Call plugin
-	_, err := s.op.storage.AddCluster(cs)
+	_, err = storage.AddCluster(cs)
 	if err != nil {
 		return s.op.logger.Log("err", err)
 	}
@@ -121,10 +126,20 @@ func (s *StorageClusterOperator) update(
 		return nil
 	}
 
+	if old.Spec.Type != new.Spec.Type {
+		return s.op.logger.Log("error", "changing storage type is not supported")
+	}
+
 	s.op.logger.Log("msg", "update found")
 
+	// Get storage plugin
+	storage, err := s.op.GetStorage(old.Spec.Type)
+	if err != nil {
+		return err
+	}
+
 	// Call plugin
-	err := s.op.storage.UpdateCluster(old, new)
+	err = storage.UpdateCluster(old, new)
 	if err != nil {
 		return s.op.logger.Log("err", err)
 	}
@@ -157,8 +172,14 @@ func (s *StorageClusterOperator) delete(cs *spec.StorageCluster) error {
 		}
 	}
 
+	// Get storage plugin
+	storage, err := s.op.GetStorage(cs.Spec.Type)
+	if err != nil {
+		return err
+	}
+
 	// Call plugin
-	err = s.op.storage.DeleteCluster(cs)
+	err = storage.DeleteCluster(cs)
 	if err != nil {
 		return s.op.logger.Log("err", err)
 	}
@@ -196,6 +217,7 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) {
 			Spec: ns,
 		}
 		node.Spec.ClusterRef = clusterRef
+		node.Spec.Type = cs.Spec.Type
 
 		// Submit the node
 		result, err := ns_client.Create(node)

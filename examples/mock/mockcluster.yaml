@@ -1,0 +1,43 @@
+apiVersion: storage.coreos.com/v1alpha1
+kind: StorageCluster
+metadata:
+    name: mymockcluster
+spec:
+    type: mock
+    storageNodes:
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-1.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-2.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-3.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-4.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-5.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-6.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-7.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-8.us-west-2.compute.internal
+          directories:
+              - /export
+        - nodeSelector:
+              kubernetes.io/hostname: ip-10-0-0-9.us-west-2.compute.internal
+          directories:
+              - /export

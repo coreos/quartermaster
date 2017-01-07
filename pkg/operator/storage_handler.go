@@ -16,6 +16,7 @@ package operator
 
 import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	"github.com/lpabon/godbc"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
@@ -35,6 +36,7 @@ type StorageHandlerFuncs struct {
 
 	InitFunc      func() error
 	GetStatusFunc func(c *spec.StorageCluster) (*spec.StorageStatus, error)
+	TypeFunc      func() spec.StorageTypeIdentifier
 }
 
 func (s StorageHandlerFuncs) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
@@ -104,4 +106,9 @@ func (s StorageHandlerFuncs) GetStatus(c *spec.StorageCluster) (*spec.StorageSta
 		return s.GetStatusFunc(c)
 	}
 	return nil, nil
+}
+
+func (s StorageHandlerFuncs) Type() spec.StorageTypeIdentifier {
+	godbc.Require(s.TypeFunc != nil, "Type() must be defined")
+	return s.TypeFunc()
 }
