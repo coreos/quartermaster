@@ -296,7 +296,7 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 }
 
 func (c *Operator) reconcile(s *spec.StorageNode) error {
-	// XXX
+	// TODO(lpabon): Remove this.
 	clusterSpec := &spec.StorageCluster{}
 
 	key, err := keyFunc(s)
