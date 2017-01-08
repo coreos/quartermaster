@@ -260,14 +260,18 @@ func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.Stor
 
 func (c *Operator) deleteDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
+	c.logger.Log("fn", "deleteDeployemnt", "on", d.Name)
 	if s := c.storageNodeForDeployment(d); s != nil {
+		c.logger.Log("fn", "deleteDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
 
 func (c *Operator) addDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
+	c.logger.Log("fn", "addDeployemnt", "on", d.Name)
 	if s := c.storageNodeForDeployment(d); s != nil {
+		c.logger.Log("fn", "addDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
@@ -284,7 +288,9 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 		return
 	}
 
+	c.logger.Log("fn", "updateDeployemnt", "on", cur.Name)
 	if s := c.storageNodeForDeployment(cur); s != nil {
+		c.logger.Log("fn", "updateDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
@@ -334,59 +340,60 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		if err != nil {
 			return c.logger.Log("err", err)
 		}
-	}
-
-	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
-	// Ensure we have a replica set running Prometheus deployed.
-	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
-	deployment := &extensions.Deployment{}
-	deployment.Namespace = s.Namespace
-	deployment.Name = s.Name
-	obj, exists, err := c.dsetInf.GetStore().Get(deployment)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-
-		// Get a deployment from plugin
-		ds, err := storage.MakeDeployment(clusterSpec, s, nil)
-		if err != nil {
-			return err
-		}
-
-		if _, err := dsetClient.Create(ds); err != nil {
-			return fmt.Errorf("create deployment: %s", err)
-		}
-		// :TODO: Wait until it is ready
-
-		// Add node
-		_, err = storage.AddNode(clusterSpec, s)
-		if err != nil {
-			// :TODO: Clean up and delete Deployment
-
-			return err
-		}
 
 	} else {
-		// Update
-		ds, err := storage.MakeDeployment(clusterSpec,
-			s,
-			obj.(*extensions.Deployment))
+		dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
+		// Ensure we have a replica set running Prometheus deployed.
+		// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
+		deployment := &extensions.Deployment{}
+		deployment.Namespace = s.Namespace
+		deployment.Name = s.Name
+		obj, exists, err := c.dsetInf.GetStore().Get(deployment)
 		if err != nil {
 			return err
 		}
 
-		// TODO(barakmich): This may be broken for DaemonSets.
-		// Will be fixed when DaemonSets do rolling updates.
-		if _, err := dsetClient.Update(ds); err != nil {
-			return err
-		}
+		if !exists {
 
-		// Update Node
-		_, err = storage.UpdateNode(clusterSpec, s)
-		if err != nil {
-			return err
+			// Get a deployment from plugin
+			ds, err := storage.MakeDeployment(clusterSpec, s, nil)
+			if err != nil {
+				return err
+			}
+
+			if _, err := dsetClient.Create(ds); err != nil {
+				return fmt.Errorf("create deployment: %s", err)
+			}
+			// :TODO: Wait until it is ready
+
+			// Add node
+			_, err = storage.AddNode(clusterSpec, s)
+			if err != nil {
+				// :TODO: Clean up and delete Deployment
+
+				return err
+			}
+
+		} else {
+			// Update
+			ds, err := storage.MakeDeployment(clusterSpec,
+				s,
+				obj.(*extensions.Deployment))
+			if err != nil {
+				return err
+			}
+
+			// TODO(barakmich): This may be broken for DaemonSets.
+			// Will be fixed when DaemonSets do rolling updates.
+			if _, err := dsetClient.Update(ds); err != nil {
+				return err
+			}
+
+			// Update Node
+			_, err = storage.UpdateNode(clusterSpec, s)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
