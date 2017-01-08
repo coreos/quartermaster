@@ -32,7 +32,7 @@ type StorageNodeInterface interface {
 		old *extensions.Deployment) (*extensions.Deployment, error)
 	AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
 	UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
-	DeleteNode(c *spec.StorageCluster, s *spec.StorageNode) error
+	DeleteNode(s *spec.StorageNode) error
 }
 
 type StorageType interface {
@@ -41,6 +41,9 @@ type StorageType interface {
 
 	Init() error
 	GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error)
+
+	// Must be supplied
+	Type() spec.StorageTypeIdentifier
 }
 
 type StorageTypeNewFunc func(*clientset.Clientset) (StorageType, error)

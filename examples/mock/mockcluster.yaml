@@ -1,0 +1,39 @@
+apiVersion: storage.coreos.com/v1alpha1
+kind: StorageCluster
+metadata:
+    name: mymockcluster
+spec:
+    type: mock
+    storageNodes:
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export
+        - directories:
+              - /export

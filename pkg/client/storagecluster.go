@@ -33,11 +33,17 @@ func NewStorageClusters(c *restclient.RESTClient, namespace string) *StorageClus
 
 func (c *StorageClusters) Create(storageCluster *spec.StorageCluster) (result *spec.StorageCluster, err error) {
 	obj, err := c.t.Create(storageCluster, &spec.StorageCluster{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageCluster), err
 }
 
 func (c *StorageClusters) Update(storageCluster *spec.StorageCluster) (result *spec.StorageCluster, err error) {
 	obj, err := c.t.Update(storageCluster, storageCluster.GetName(), &spec.StorageCluster{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageCluster), err
 }
 
@@ -47,10 +53,16 @@ func (c *StorageClusters) Delete(name string, options *api.DeleteOptions) error 
 
 func (c *StorageClusters) Get(name string) (result *spec.StorageCluster, err error) {
 	obj, err := c.t.Get(name, &spec.StorageCluster{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageCluster), err
 }
 
 func (c *StorageClusters) List(opts api.ListOptions) (result *spec.StorageClusterList, err error) {
 	obj, err := c.t.List(&spec.StorageClusterList{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageClusterList), err
 }

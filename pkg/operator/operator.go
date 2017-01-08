@@ -41,7 +41,7 @@ type Operator struct {
 	rclient *restclient.RESTClient
 	logger  log.Logger
 
-	storage StorageType
+	storageSystems map[spec.StorageTypeIdentifier]StorageType
 
 	nodeInf   cache.SharedIndexInformer
 	dsetInf   cache.SharedIndexInformer
@@ -60,7 +60,7 @@ type Config struct {
 }
 
 // New creates a new controller.
-func New(c Config, storage StorageTypeNewFunc) (*Operator, error) {
+func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
 	cfg, err := newClusterConfig(c.Host, c.TLSInsecure, &c.TLSConfig)
 	if err != nil {
 		return nil, err
@@ -77,18 +77,38 @@ func New(c Config, storage StorageTypeNewFunc) (*Operator, error) {
 		return nil, err
 	}
 
-	st, err := storage(client)
-	if err != nil {
-		return nil, err
+	// Initialize storage plugins
+	storageSystems := make(map[spec.StorageTypeIdentifier]StorageType)
+	for _, newStorage := range storageFuns {
+
+		// New
+		st, err := newStorage(client)
+		if err != nil {
+			return nil, err
+		}
+
+		// Save object
+		storageSystems[st.Type()] = st
+
+		logger.Log("msg", "storage loaded", "type", st.Type())
 	}
+
 	return &Operator{
-		kclient: client,
-		rclient: rclient,
-		logger:  logger,
-		queue:   newQueue(200),
-		host:    cfg.Host,
-		storage: st,
+		kclient:        client,
+		rclient:        rclient,
+		logger:         logger,
+		queue:          newQueue(200),
+		host:           cfg.Host,
+		storageSystems: storageSystems,
 	}, nil
+}
+
+func (c *Operator) GetStorage(name spec.StorageTypeIdentifier) (StorageType, error) {
+	if storage, ok := c.storageSystems[name]; ok {
+		return storage, nil
+	} else {
+		return nil, c.logger.Log("invalid storage type", name)
+	}
 }
 
 // Run the controller.
@@ -240,14 +260,18 @@ func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.Stor
 
 func (c *Operator) deleteDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
+	c.logger.Log("fn", "deleteDeployemnt", "on", d.Name)
 	if s := c.storageNodeForDeployment(d); s != nil {
+		c.logger.Log("fn", "deleteDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
 
 func (c *Operator) addDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
+	c.logger.Log("fn", "addDeployemnt", "on", d.Name)
 	if s := c.storageNodeForDeployment(d); s != nil {
+		c.logger.Log("fn", "addDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
@@ -264,12 +288,17 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 		return
 	}
 
+	c.logger.Log("fn", "updateDeployemnt", "on", cur.Name)
 	if s := c.storageNodeForDeployment(cur); s != nil {
+		c.logger.Log("fn", "updateDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
 
 func (c *Operator) reconcile(s *spec.StorageNode) error {
+	// TODO(lpabon): Remove this.
+	clusterSpec := &spec.StorageCluster{}
+
 	key, err := keyFunc(s)
 	if err != nil {
 		return err
@@ -280,6 +309,13 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	if err != nil {
 		return err
 	}
+
+	// Get plugin
+	storage, err := c.GetStorage(s.Spec.Type)
+	if err != nil {
+		return err
+	}
+
 	if !exists {
 		// TODO(fabxc): we want to do server side deletion due to the variety of
 		// resources we create.
@@ -289,7 +325,8 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		// Let's rely on the index key matching that of the created configmap and replica
 		// set for now. This does not work if we delete Prometheus resources as the
 		// controller is not running – that could be solved via garbage collection later.
-		err := c.storage.DeleteNode(&spec.StorageCluster{}, s)
+
+		err := storage.DeleteNode(s)
 		if err != nil {
 			return c.logger.Log("err", err)
 		}
@@ -304,56 +341,59 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			return c.logger.Log("err", err)
 		}
 
-	}
-
-	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
-	// Ensure we have a replica set running Prometheus deployed.
-	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
-	deployment := &extensions.Deployment{}
-	deployment.Namespace = s.Namespace
-	deployment.Name = s.Name
-	obj, exists, err := c.dsetInf.GetStore().Get(deployment)
-	if err != nil {
-		return err
-	}
-
-	if !exists {
-		ds, err := c.storage.MakeDeployment(&spec.StorageCluster{}, s, nil)
-		if err != nil {
-			return err
-		}
-		if _, err := dsetClient.Create(ds); err != nil {
-			return fmt.Errorf("create deployment: %s", err)
-		}
-
-		// :TODO: Wait until it is ready
-
-		// Add node
-		_, err = c.storage.AddNode(&spec.StorageCluster{}, s)
-		if err != nil {
-			// :TODO: Clean up and delete Deployment
-
-			return err
-		}
-
 	} else {
-		// Update
-		ds, err := c.storage.MakeDeployment(&spec.StorageCluster{},
-			s,
-			obj.(*extensions.Deployment))
+		dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
+		// Ensure we have a replica set running Prometheus deployed.
+		// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
+		deployment := &extensions.Deployment{}
+		deployment.Namespace = s.Namespace
+		deployment.Name = s.Name
+		obj, exists, err := c.dsetInf.GetStore().Get(deployment)
 		if err != nil {
-			return err
-		}
-		// TODO(barakmich): This may be broken for DaemonSets.
-		// Will be fixed when DaemonSets do rolling updates.
-		if _, err := dsetClient.Update(ds); err != nil {
 			return err
 		}
 
-		// Update Node
-		_, err = c.storage.UpdateNode(&spec.StorageCluster{}, s)
-		if err != nil {
-			return err
+		if !exists {
+
+			// Get a deployment from plugin
+			ds, err := storage.MakeDeployment(clusterSpec, s, nil)
+			if err != nil {
+				return err
+			}
+
+			if _, err := dsetClient.Create(ds); err != nil {
+				return fmt.Errorf("create deployment: %s", err)
+			}
+			// :TODO: Wait until it is ready
+
+			// Add node
+			_, err = storage.AddNode(clusterSpec, s)
+			if err != nil {
+				// :TODO: Clean up and delete Deployment
+
+				return err
+			}
+
+		} else {
+			// Update
+			ds, err := storage.MakeDeployment(clusterSpec,
+				s,
+				obj.(*extensions.Deployment))
+			if err != nil {
+				return err
+			}
+
+			// TODO(barakmich): This may be broken for DaemonSets.
+			// Will be fixed when DaemonSets do rolling updates.
+			if _, err := dsetClient.Update(ds); err != nil {
+				return err
+			}
+
+			// Update Node
+			_, err = storage.UpdateNode(clusterSpec, s)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

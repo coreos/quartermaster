@@ -33,11 +33,17 @@ func NewStorageNodes(c *restclient.RESTClient, namespace string) *StorageNodes {
 
 func (c *StorageNodes) Create(storageNode *spec.StorageNode) (result *spec.StorageNode, err error) {
 	obj, err := c.t.Create(storageNode, &spec.StorageNode{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageNode), err
 }
 
 func (c *StorageNodes) Update(storageNode *spec.StorageNode) (result *spec.StorageNode, err error) {
 	obj, err := c.t.Update(storageNode, storageNode.GetName(), &spec.StorageNode{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageNode), err
 }
 
@@ -47,10 +53,16 @@ func (c *StorageNodes) Delete(name string, options *api.DeleteOptions) error {
 
 func (c *StorageNodes) Get(name string) (result *spec.StorageNode, err error) {
 	obj, err := c.t.Get(name, &spec.StorageNode{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageNode), err
 }
 
 func (c *StorageNodes) List(opts api.ListOptions) (result *spec.StorageNodeList, err error) {
 	obj, err := c.t.List(&spec.StorageNodeList{})
+	if err != nil {
+		return nil, err
+	}
 	return obj.(*spec.StorageNodeList), err
 }

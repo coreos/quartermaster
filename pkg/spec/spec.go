@@ -57,17 +57,18 @@ type StorageClusterList struct {
 	Items []StorageCluster `json:"items"`
 }
 
-type StorageType string
+type StorageTypeIdentifier string
 
 const (
-	StorageTypeNFS       StorageType = "nfs"
-	StorageTypeGlusterFS StorageType = "glusterfs"
-	StorageTypeTorus     StorageType = "torus"
+	StorageTypeIdentifierMock      StorageTypeIdentifier = "mock"
+	StorageTypeIdentifierNFS       StorageTypeIdentifier = "nfs"
+	StorageTypeIdentifierGlusterFS StorageTypeIdentifier = "glusterfs"
+	StorageTypeIdentifierTorus     StorageTypeIdentifier = "torus"
 )
 
 type StorageClusterSpec struct {
-	// Software define storage type
-	Type StorageType `json:"type"`
+	// Software defined storage type
+	Type StorageTypeIdentifier `json:"type"`
 
 	// Specific image to use on all nodes of the cluster.  If not avaiable,
 	// it defaults to the image from QuarterMaster
@@ -82,6 +83,9 @@ type StorageClusterSpec struct {
 
 // StorageNodeSpec holds specification parameters for a StorageNode.
 type StorageNodeSpec struct {
+	// Software defined storage type
+	Type StorageTypeIdentifier `json:"type"`
+
 	// Specific image to use on the storage node requested.  If not avaiable,
 	// it defaults to the StorageCluster image.
 	// +optional

@@ -1,7 +1,20 @@
-package nfs
+// Copyright 2017 The quartermaster Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package mock
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -25,7 +38,7 @@ func init() {
 }
 
 func New(client *clientset.Clientset) (operator.StorageType, error) {
-	s := &NfsStorage{
+	s := &MockStorage{
 		client: client,
 	}
 
@@ -33,6 +46,9 @@ func New(client *clientset.Clientset) (operator.StorageType, error) {
 		StorageHandler:     s,
 		TypeFunc:           s.Type,
 		InitFunc:           s.Init,
+		AddClusterFunc:     s.AddCluster,
+		UpdateClusterFunc:  s.UpdateCluster,
+		DeleteClusterFunc:  s.DeleteCluster,
 		MakeDeploymentFunc: s.MakeDeployment,
 		AddNodeFunc:        s.AddNode,
 		UpdateNodeFunc:     s.UpdateNode,
@@ -41,21 +57,38 @@ func New(client *clientset.Clientset) (operator.StorageType, error) {
 	}, nil
 }
 
-type NfsStorage struct {
+type MockStorage struct {
 	client *clientset.Clientset
 }
 
-func (st *NfsStorage) Init() error {
-	// Nothing to initialize, no external managing containers to check, very simple.
+func (st *MockStorage) Init() error {
+	logger.Debug().Log("msg", "init")
 	return nil
 }
 
-func (st *NfsStorage) MakeDeployment(c *spec.StorageCluster,
+func (st *MockStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
+	logger.Debug().Log("msg", "add cluster", "cluster", c.Name)
+	return nil, nil
+}
+
+func (st *MockStorage) UpdateCluster(old *spec.StorageCluster,
+	new *spec.StorageCluster) error {
+	logger.Debug().Log("msg", "update", "cluster", old.Name)
+	return nil
+}
+
+func (st *MockStorage) DeleteCluster(c *spec.StorageCluster) error {
+	logger.Debug().Log("msg", "delete", "cluster", c.Name)
+	return nil
+}
+
+func (st *MockStorage) MakeDeployment(c *spec.StorageCluster,
 	s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
+	logger.Debug().Log("msg", "make deployment", "node", s.Name)
 
 	if s.Spec.Image == "" {
-		s.Spec.Image = "quay.io/luis_pabon0/ganesha:latest"
+		s.Spec.Image = "nginx"
 	}
 	spec, err := st.makeDeploymentSpec(s)
 	if err != nil {
@@ -81,15 +114,7 @@ func (st *NfsStorage) MakeDeployment(c *spec.StorageCluster,
 	return deployment, nil
 }
 
-func dashifyPath(s string) string {
-	s = strings.TrimLeft(s, "/")
-	return strings.Replace(s, "/", "-", -1)
-}
-
-func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
-	if len(s.Spec.Devices) != 0 {
-		return nil, fmt.Errorf("NFS does not support raw device access")
-	}
+func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
 	var volumes []api.Volume
 	var mounts []api.VolumeMount
 
@@ -109,8 +134,6 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 		})
 	}
 
-	privileged := true
-
 	spec := &extensions.DeploymentSpec{
 		Replicas: 1,
 		Template: api.PodTemplateSpec{
@@ -129,30 +152,6 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 						Image:           s.Spec.Image,
 						ImagePullPolicy: api.PullIfNotPresent,
 						VolumeMounts:    mounts,
-						SecurityContext: &api.SecurityContext{
-							Privileged: &privileged,
-						},
-
-						Ports: []api.ContainerPort{
-							api.ContainerPort{
-								Name:          "nfs",
-								ContainerPort: 2049,
-								//TODO(barakmich)
-								// HostIP: <get IP from spec>
-							},
-							api.ContainerPort{
-								Name:          "mountd",
-								ContainerPort: 20048,
-								//TODO(barakmich)
-								// HostIP: <get IP from spec>
-							},
-							api.ContainerPort{
-								Name:          "rpcbind",
-								ContainerPort: 111,
-								//TODO(barakmich)
-								// HostIP: <get IP from spec>
-							},
-						},
 					},
 				},
 				Volumes: volumes,
@@ -162,27 +161,32 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 	return spec, nil
 }
 
-func (st *NfsStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *MockStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
 	return nil, nil
 }
 
-func (st *NfsStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *MockStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
 	return nil, nil
 }
 
-func (st *NfsStorage) DeleteNode(s *spec.StorageNode) error {
+func (st *MockStorage) DeleteNode(s *spec.StorageNode) error {
 	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
 	return nil
 }
 
-func (st *NfsStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
+func (st *MockStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
 	logger.Debug().Log("msg", "status", "cluster", c.Name)
 	status := &spec.StorageStatus{}
 	return status, nil
 }
 
-func (st *NfsStorage) Type() spec.StorageTypeIdentifier {
-	return spec.StorageTypeIdentifierNFS
+func (st *MockStorage) Type() spec.StorageTypeIdentifier {
+	return spec.StorageTypeIdentifierMock
+}
+
+func dashifyPath(s string) string {
+	s = strings.TrimLeft(s, "/")
+	return strings.Replace(s, "/", "-", -1)
 }
