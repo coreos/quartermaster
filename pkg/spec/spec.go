@@ -68,7 +68,7 @@ const (
 
 type StorageClusterSpec struct {
 	// Software defined storage type
-	Type StorageTypeIdentifier `json:"type"`
+	Type StorageTypeIdentifier `json:"type,omitempty"`
 
 	// Specific image to use on all nodes of the cluster.  If not avaiable,
 	// it defaults to the image from QuarterMaster
@@ -79,27 +79,25 @@ type StorageClusterSpec struct {
 	StorageNodes []StorageNodeSpec `json:"storageNodes,omitempty"`
 
 	// Add storage specific section here
+	GlusterFS *GlusterStorageCluster `json:"glusterfs,omitempty"`
 }
 
 // StorageNodeSpec holds specification parameters for a StorageNode.
 type StorageNodeSpec struct {
 	// Software defined storage type
-	Type StorageTypeIdentifier `json:"type"`
+	Type StorageTypeIdentifier `json:"type,omitempty"`
 
 	// Specific image to use on the storage node requested.  If not avaiable,
 	// it defaults to the StorageCluster image.
 	// +optional
 	Image string `json:"image,omitempty"`
 
-	// The node belongs to the cluster with the specified label
-	Selector map[string]string `json:"selector"`
-
-	// Name of node
+	// Request the storage node be scheduled on a specific node
 	// Must have set either Node or NodeSelector
 	// +optional
 	NodeName string `json:"nodeName,omitempty"`
 
-	// Node label to match
+	// Request the storage node be scheduled on a node that matches the labels
 	// Must have either Node or NodeSelector
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
@@ -138,10 +136,16 @@ type StorageNodeNetwork struct {
 	IPs []string `json:"ips"`
 }
 
+// GlusterStorageCluster defines the specific information about the cluster
+type GlusterStorageCluster struct {
+	Cluster string `json:"cluster"`
+}
+
 // GlusterStorageNode defines the specifics of how this Gluster instance should be instantiated.
 type GlusterStorageNode struct {
 	Cluster string `json:"cluster"` // Cluster ID this node should belong to.
-	Zone    string `json:"zone"`    // Zone ID this node belongs to. If missing, Zone 1 will be assumed.
+	Node    string `json:"node"`    // Node ID
+	Zone    int    `json:"zone"`    // Zone ID this node belongs to. If missing, Zone 1 will be assumed.
 }
 
 // TorusStorageNode defines the specifics of how this Gluster instance should be instantiated.

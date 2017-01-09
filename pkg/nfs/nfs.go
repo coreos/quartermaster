@@ -122,6 +122,7 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 				Name: s.Name,
 			},
 			Spec: api.PodSpec{
+				NodeName:     s.Spec.NodeName,
 				NodeSelector: s.Spec.NodeSelector,
 				Containers: []api.Container{
 					api.Container{

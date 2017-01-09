@@ -25,6 +25,7 @@ import (
 	"github.com/go-kit/kit/log"
 
 	"k8s.io/kubernetes/pkg/api"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
@@ -118,12 +119,6 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	// Start notification worker
 	go c.worker()
 
-	// :TODO: (lpabon) This needs to be orginized better
-	//         with the other worker.
-	// go c.clusterWorker()
-	c.clusterOp = NewStorageClusterOperator(c)
-	c.clusterOp.Setup(stopc)
-
 	// Test communication with server
 	v, err := c.kclient.Discovery().ServerVersion()
 	if err != nil {
@@ -175,9 +170,15 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 		},
 	})
 
+	// Setup StorageCluster Operator
+	c.clusterOp = NewStorageClusterOperator(c)
+	c.clusterOp.Setup(stopc)
+
+	// Spawn event handlers
 	go c.nodeInf.Run(stopc)
 	go c.dsetInf.Run(stopc)
 
+	// Wait until event handlers are ready
 	c.logger.Log("msg", "Waiting for sync")
 	for !c.nodeInf.HasSynced() ||
 		!c.dsetInf.HasSynced() ||
@@ -260,18 +261,14 @@ func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.Stor
 
 func (c *Operator) deleteDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
-	c.logger.Log("fn", "deleteDeployemnt", "on", d.Name)
 	if s := c.storageNodeForDeployment(d); s != nil {
-		c.logger.Log("fn", "deleteDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
 
 func (c *Operator) addDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
-	c.logger.Log("fn", "addDeployemnt", "on", d.Name)
 	if s := c.storageNodeForDeployment(d); s != nil {
-		c.logger.Log("fn", "addDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
@@ -280,17 +277,13 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 	old := oldo.(*extensions.Deployment)
 	cur := curo.(*extensions.Deployment)
 
-	c.logger.Log("msg", "update handler", "old", old.ResourceVersion, "cur", cur.ResourceVersion)
-
 	// Periodic resync may resend the deployment without changes in-between.
 	// Also breaks loops created by updating the resource ourselves.
 	if old.ResourceVersion == cur.ResourceVersion {
 		return
 	}
 
-	c.logger.Log("fn", "updateDeployemnt", "on", cur.Name)
 	if s := c.storageNodeForDeployment(cur); s != nil {
-		c.logger.Log("fn", "updateDeployemnt", "submit", s.Name)
 		c.enqueueStorageNode(s)
 	}
 }
@@ -301,19 +294,18 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 
 	key, err := keyFunc(s)
 	if err != nil {
-		return err
-	}
-	c.logger.Log("msg", "reconcile storagenode", "key", key)
-
-	_, exists, err := c.nodeInf.GetStore().GetByKey(key)
-	if err != nil {
-		return err
+		return c.logger.Log("err", err)
 	}
 
 	// Get plugin
 	storage, err := c.GetStorage(s.Spec.Type)
 	if err != nil {
-		return err
+		return c.logger.Log("err", err)
+	}
+
+	_, exists, err := c.nodeInf.GetStore().GetByKey(key)
+	if err != nil {
+		return c.logger.Log("err", err)
 	}
 
 	if !exists {
@@ -341,63 +333,66 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			return c.logger.Log("err", err)
 		}
 
-	} else {
-		dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
-		// Ensure we have a replica set running Prometheus deployed.
-		// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
-		deployment := &extensions.Deployment{}
-		deployment.Namespace = s.Namespace
-		deployment.Name = s.Name
-		obj, exists, err := c.dsetInf.GetStore().Get(deployment)
+		return nil
+	}
+
+	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
+	// Ensure we have a replica set running Prometheus deployed.
+	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
+	deployment := &extensions.Deployment{}
+	deployment.Namespace = s.Namespace
+	deployment.Name = s.Name
+	obj, exists, err := c.dsetInf.GetStore().Get(deployment)
+	if err != nil {
+		return c.logger.Log("err", err)
+	}
+
+	if !exists {
+
+		// Get a deployment from plugin
+		ds, err := storage.MakeDeployment(clusterSpec, s, nil)
 		if err != nil {
+			return c.logger.Log("err", err)
+		}
+
+		if _, err := dsetClient.Create(ds); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return c.logger.Log("msg", "unable to create deployment", "err", err)
+			}
+		}
+		// :TODO: Wait until it is ready
+
+		// Add node
+		_, err = storage.AddNode(clusterSpec, s)
+		if err != nil {
+			// :TODO: Clean up and delete Deployment
+
 			return err
 		}
 
-		if !exists {
+	} else {
+		// Update
+		ds, err := storage.MakeDeployment(clusterSpec,
+			s,
+			obj.(*extensions.Deployment))
+		if err != nil {
+			return c.logger.Log("err", err)
+		}
 
-			// Get a deployment from plugin
-			ds, err := storage.MakeDeployment(clusterSpec, s, nil)
-			if err != nil {
-				return err
-			}
+		// TODO(barakmich): This may be broken for DaemonSets.
+		// Will be fixed when DaemonSets do rolling updates.
+		if _, err := dsetClient.Update(ds); err != nil {
+			return c.logger.Log("err", err)
+		}
 
-			if _, err := dsetClient.Create(ds); err != nil {
-				return fmt.Errorf("create deployment: %s", err)
-			}
-			// :TODO: Wait until it is ready
-
-			// Add node
-			_, err = storage.AddNode(clusterSpec, s)
-			if err != nil {
-				// :TODO: Clean up and delete Deployment
-
-				return err
-			}
-
-		} else {
-			// Update
-			ds, err := storage.MakeDeployment(clusterSpec,
-				s,
-				obj.(*extensions.Deployment))
-			if err != nil {
-				return err
-			}
-
-			// TODO(barakmich): This may be broken for DaemonSets.
-			// Will be fixed when DaemonSets do rolling updates.
-			if _, err := dsetClient.Update(ds); err != nil {
-				return err
-			}
-
-			// Update Node
-			_, err = storage.UpdateNode(clusterSpec, s)
-			if err != nil {
-				return err
-			}
+		// Update Node
+		_, err = storage.UpdateNode(clusterSpec, s)
+		if err != nil {
+			return c.logger.Log("err", err)
 		}
 	}
 
-	return c.updateStatus()
+	return nil
 }
 
 func (c *Operator) updateStatus() error {

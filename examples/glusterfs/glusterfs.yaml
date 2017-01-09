@@ -1,19 +1,22 @@
 apiVersion: storage.coreos.com/v1alpha1
 kind: StorageCluster
 metadata:
-    name: mymockcluster
+    name: gluster
 spec:
-    type: mock
+    type: glusterfs
     storageNodes:
         - nodeName: ip-10-0-0-167.us-west-2.compute.internal
+          glusterfs:
+              zone: 1
           directories:
               - /export
         - nodeName: ip-10-0-0-168.us-west-2.compute.internal
+          glusterfs:
+              zone: 2
           directories:
               - /export
         - nodeName: ip-10-0-0-169.us-west-2.compute.internal
-          directories:
-              - /export
-        - nodeName: ip-10-0-0-50.us-west-2.compute.internal
+          glusterfs:
+              zone: 3
           directories:
               - /export
