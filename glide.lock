@@ -1,5 +1,5 @@
 hash: 2a889ab9e5ff02f8c9b4d7b5d479b3cbaa0501c241ce091a7dd544a7101f752f
-updated: 2017-01-06T17:05:04.626287682-05:00
+updated: 2017-01-12T00:47:42.847250102-05:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -126,6 +126,12 @@ imports:
   - proto
 - name: github.com/google/gofuzz
   version: bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5
+- name: github.com/heketi/heketi
+  version: 28b5cc4cc6d2b9bdfa91ed1b93efaab4931aa697
+  subpackages:
+  - client/api/go-client
+  - pkg/glusterfs/api
+  - pkg/utils
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jonboulle/clockwork

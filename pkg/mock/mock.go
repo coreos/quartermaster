@@ -26,6 +26,7 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
 var (
@@ -37,7 +38,7 @@ func init() {
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
-func New(client *clientset.Clientset) (operator.StorageType, error) {
+func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.StorageType, error) {
 	s := &MockStorage{
 		client: client,
 	}
@@ -59,6 +60,7 @@ func New(client *clientset.Clientset) (operator.StorageType, error) {
 
 type MockStorage struct {
 	client *clientset.Clientset
+	qm     *restclient.RESTClient
 }
 
 func (st *MockStorage) Init() error {
@@ -145,6 +147,7 @@ func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Depl
 				Name: s.Name,
 			},
 			Spec: api.PodSpec{
+				NodeName:     s.Spec.NodeName,
 				NodeSelector: s.Spec.NodeSelector,
 				Containers: []api.Container{
 					api.Container{

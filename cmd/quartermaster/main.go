@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/coreos-inc/quartermaster/pkg/glusterfs"
 	"github.com/coreos-inc/quartermaster/pkg/mock"
 	"github.com/coreos-inc/quartermaster/pkg/nfs"
 	"github.com/coreos-inc/quartermaster/pkg/operator"
@@ -41,7 +42,7 @@ func init() {
 }
 
 func main() {
-	c, err := operator.New(cfg, nfs.New, mock.New)
+	c, err := operator.New(cfg, nfs.New, mock.New, glusterfs.New)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)

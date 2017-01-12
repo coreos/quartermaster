@@ -18,6 +18,7 @@ import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
 type StorageClusterInterface interface {
@@ -46,4 +47,4 @@ type StorageType interface {
 	Type() spec.StorageTypeIdentifier
 }
 
-type StorageTypeNewFunc func(*clientset.Clientset) (StorageType, error)
+type StorageTypeNewFunc func(*clientset.Clientset, *restclient.RESTClient) (StorageType, error)
