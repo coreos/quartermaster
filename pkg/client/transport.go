@@ -72,27 +72,6 @@ func (t *Transport) Update(in interface{},
 	return
 }
 
-func (t *Transport) UpdateStatus(in interface{},
-	name string,
-	resultObj interface{}) (result interface{}, err error) {
-
-	result = resultObj
-	req := t.client.Put().
-		Namespace(t.ns).
-		Resource(t.resource).
-		Name(name).
-		SubResource("status").
-		Body(in)
-
-	body, err := req.DoRaw()
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(body, result)
-	return
-}
-
 func (t *Transport) Delete(name string, options *api.DeleteOptions) error {
 	return t.client.Delete().
 		Namespace(t.ns).

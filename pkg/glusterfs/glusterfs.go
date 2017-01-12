@@ -30,6 +30,7 @@ import (
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/util/intstr"
 
 	heketiclient "github.com/heketi/heketi/client/api/go-client"
@@ -45,9 +46,10 @@ func init() {
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
-func New(client *clientset.Clientset) (operator.StorageType, error) {
+func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.StorageType, error) {
 	s := &GlusterStorage{
 		client: client,
+		qm:     qm,
 	}
 
 	return &operator.StorageHandlerFuncs{
@@ -67,6 +69,7 @@ func New(client *clientset.Clientset) (operator.StorageType, error) {
 
 type GlusterStorage struct {
 	client *clientset.Clientset
+	qm     *restclient.RESTClient
 }
 
 func (st *GlusterStorage) Init() error {

@@ -5,28 +5,37 @@ import (
 	"os"
 	"strings"
 
+	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/levels"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
 var (
 	logger levels.Levels
 )
 
+type NfsStorage struct {
+	client *clientset.Clientset
+	qm     *restclient.RESTClient
+}
+
 func init() {
 	logger = levels.New(log.NewContext(log.NewLogfmtLogger(os.Stdout)).
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
-func New(client *clientset.Clientset) (operator.StorageType, error) {
+func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.StorageType, error) {
 	s := &NfsStorage{
 		client: client,
+		qm:     qm,
 	}
 
 	return &operator.StorageHandlerFuncs{
@@ -39,10 +48,6 @@ func New(client *clientset.Clientset) (operator.StorageType, error) {
 		DeleteNodeFunc:     s.DeleteNode,
 		GetStatusFunc:      s.GetStatus,
 	}, nil
-}
-
-type NfsStorage struct {
-	client *clientset.Clientset
 }
 
 func (st *NfsStorage) Init() error {
@@ -165,7 +170,28 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 
 func (st *NfsStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
-	return nil, nil
+
+	// Update status of node and cluster
+	s.Status.Ready = true
+	s.Status.Message = "NFS Started"
+	s.Status.Reason = "Success"
+
+	// Update cluster
+	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
+	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
+	if err != nil {
+		return nil, logger.Error().Log("err", err)
+	}
+
+	cluster.Status.Ready = true
+	cluster.Status.Message = "NFS started by storagenode " + s.GetName()
+	cluster.Status.Reason = "Success"
+	_, err = clusters.Update(cluster)
+	if err != nil {
+		return nil, logger.Error().Log("err", err)
+	}
+
+	return s, nil
 }
 
 func (st *NfsStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {

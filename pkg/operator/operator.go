@@ -20,6 +20,7 @@ import (
 	"os"
 	"time"
 
+	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 
 	"github.com/go-kit/kit/log"
@@ -83,7 +84,7 @@ func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
 	for _, newStorage := range storageFuns {
 
 		// New
-		st, err := newStorage(client)
+		st, err := newStorage(client, rclient)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +92,7 @@ func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
 		// Save object
 		storageSystems[st.Type()] = st
 
-		logger.Log("msg", "storage loaded", "type", st.Type())
+		logger.Log("msg", "storage driver loaded", "type", st.Type())
 	}
 
 	return &Operator{
@@ -303,7 +304,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		return c.logger.Log("err", err)
 	}
 
-	_, exists, err := c.nodeInf.GetStore().GetByKey(key)
+	obj, exists, err := c.nodeInf.GetStore().GetByKey(key)
 	if err != nil {
 		return c.logger.Log("err", err)
 	}
@@ -336,13 +337,22 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		return nil
 	}
 
+	// Use the copy in the cache
+	s = obj.(*spec.StorageNode)
+
+	// DeepCopy CS
+	s, err = storageNodeDeepCopy(s)
+	if err != nil {
+		return c.logger.Log("err", err)
+	}
+
 	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
 	// Ensure we have a replica set running Prometheus deployed.
 	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
 	deployment := &extensions.Deployment{}
 	deployment.Namespace = s.Namespace
 	deployment.Name = s.Name
-	obj, exists, err := c.dsetInf.GetStore().Get(deployment)
+	obj, exists, err = c.dsetInf.GetStore().Get(deployment)
 	if err != nil {
 		return c.logger.Log("err", err)
 	}
@@ -363,13 +373,19 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		// :TODO: Wait until it is ready
 
 		// Add node
-		_, err = storage.AddNode(clusterSpec, s)
+		updated, err := storage.AddNode(clusterSpec, s)
 		if err != nil {
-			// :TODO: Clean up and delete Deployment
-
-			return err
+			return c.logger.Log("err", err)
 		}
 
+		// Update node object
+		if updated != nil {
+			storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
+			_, err = storagenodes.Update(updated)
+			if err != nil {
+				return c.logger.Log("err", err)
+			}
+		}
 	} else {
 		// Update
 		ds, err := storage.MakeDeployment(clusterSpec,
@@ -434,4 +450,16 @@ func newClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSCl
 	cfg.Burst = 100
 
 	return cfg, nil
+}
+
+func storageNodeDeepCopy(ns *spec.StorageNode) (*spec.StorageNode, error) {
+	objCopy, err := api.Scheme.DeepCopy(ns)
+	if err != nil {
+		return nil, err
+	}
+	copied, ok := objCopy.(*spec.StorageNode)
+	if !ok {
+		return nil, fmt.Errorf("expected StorageNode, got %#v", objCopy)
+	}
+	return copied, nil
 }
