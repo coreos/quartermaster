@@ -24,10 +24,10 @@ import (
 type Transport struct {
 	resource string
 	ns       string
-	client   *restclient.RESTClient
+	client   restclient.Interface
 }
 
-func NewTransport(c *restclient.RESTClient, namespace, resoure string) *Transport {
+func NewTransport(c restclient.Interface, namespace, resoure string) *Transport {
 	return &Transport{
 		client:   c,
 		ns:       namespace,

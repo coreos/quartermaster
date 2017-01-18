@@ -23,8 +23,8 @@ var (
 )
 
 type NfsStorage struct {
-	client *clientset.Clientset
-	qm     *restclient.RESTClient
+	client clientset.Interface
+	qm     restclient.Interface
 }
 
 func init() {
@@ -32,7 +32,7 @@ func init() {
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
-func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.StorageType, error) {
+func New(client clientset.Interface, qm restclient.Interface) (operator.StorageType, error) {
 	s := &NfsStorage{
 		client: client,
 		qm:     qm,

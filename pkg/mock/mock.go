@@ -38,9 +38,10 @@ func init() {
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
-func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.StorageType, error) {
+func New(client clientset.Interface, qm restclient.Interface) (operator.StorageType, error) {
 	s := &MockStorage{
 		client: client,
+		qm:     qm,
 	}
 
 	return &operator.StorageHandlerFuncs{
@@ -59,8 +60,8 @@ func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.Stora
 }
 
 type MockStorage struct {
-	client *clientset.Clientset
-	qm     *restclient.RESTClient
+	client clientset.Interface
+	qm     restclient.Interface
 }
 
 func (st *MockStorage) Init() error {

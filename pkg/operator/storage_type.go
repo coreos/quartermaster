@@ -47,4 +47,4 @@ type StorageType interface {
 	Type() spec.StorageTypeIdentifier
 }
 
-type StorageTypeNewFunc func(*clientset.Clientset, *restclient.RESTClient) (StorageType, error)
+type StorageTypeNewFunc func(clientset.Interface, restclient.Interface) (StorageType, error)
