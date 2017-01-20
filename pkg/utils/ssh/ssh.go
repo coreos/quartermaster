@@ -26,7 +26,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/heketi/utils"
+	"github.com/coreos-inc/quartermaster/pkg/utils"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )

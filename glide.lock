@@ -1,5 +1,5 @@
-hash: bf2d08a12b1c573711bf98c3d55d0eab0da9f7a3471feee05682fb619acc8ed5
-updated: 2017-01-18T14:56:15.93622647-05:00
+hash: 879540fc834d9fe85017d20c6d2256b8a104c87f1b9fc294713ca378d5149a87
+updated: 2017-01-20T12:24:03.646143029-05:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -174,7 +174,7 @@ imports:
 - name: github.com/heketi/tests
   version: f3775cbcefd6822086c729e3ce4b70ca85a5bd21
 - name: github.com/heketi/utils
-  version: 562752a7ffaa50306620f808970fedeccf3b54fb
+  version: 34e5a97154d1d016635ad6ce436a68fdc8a75876
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jonboulle/clockwork
@@ -217,14 +217,9 @@ imports:
 - name: golang.org/x/crypto
   version: 1f22c0103821b9390939b6776727195525381532
   subpackages:
-  - bcrypt
-  - blowfish
   - curve25519
-  - pkcs12
-  - pkcs12/internal/rc2
   - ssh
   - ssh/agent
-  - ssh/terminal
 - name: golang.org/x/net
   version: e90d6d0afc4c315a0d87a568ae68577cc15149a0
   subpackages:

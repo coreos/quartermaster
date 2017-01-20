@@ -9,8 +9,6 @@ import:
   subpackages:
   - pkg/heketitest
   - pkg/glusterfs/api
-- package: github.com/heketi/utils
-  version: 562752a7ffaa50306620f808970fedeccf3b54fb
 - package: k8s.io/kubernetes
   version: v1.5.1
   subpackages:

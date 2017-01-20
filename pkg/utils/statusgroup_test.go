@@ -19,7 +19,7 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"github.com/heketi/tests"
+	"github.com/coreos-inc/quartermaster/pkg/tests"
 	"testing"
 	"time"
 )
