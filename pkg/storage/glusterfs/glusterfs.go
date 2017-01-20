@@ -20,8 +20,8 @@ import (
 	"time"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
-	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 
 	"github.com/heketi/utils"
 
@@ -43,13 +43,13 @@ var (
 	}
 )
 
-func New(client clientset.Interface, qm restclient.Interface) (operator.StorageType, error) {
+func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
 	s := &GlusterStorage{
 		client: client,
 		qm:     qm,
 	}
 
-	return &operator.StorageHandlerFuncs{
+	return &qmstorage.StorageHandlerFuncs{
 		StorageHandler:     s,
 		TypeFunc:           s.Type,
 		InitFunc:           s.Init,

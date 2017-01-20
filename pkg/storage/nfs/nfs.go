@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
-	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/levels"
@@ -32,13 +32,13 @@ func init() {
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
-func New(client clientset.Interface, qm restclient.Interface) (operator.StorageType, error) {
+func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
 	s := &NfsStorage{
 		client: client,
 		qm:     qm,
 	}
 
-	return &operator.StorageHandlerFuncs{
+	return &qmstorage.StorageHandlerFuncs{
 		StorageHandler:     s,
 		TypeFunc:           s.Type,
 		InitFunc:           s.Init,
