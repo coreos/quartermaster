@@ -174,6 +174,7 @@ func (st *GlusterStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.D
 	var volumes []api.Volume
 	var mounts []api.VolumeMount
 
+	// TODO(lpabon): Remove this
 	for _, path := range s.Spec.Directories {
 		dash := dashifyPath(path)
 		volumes = append(volumes, api.Volume{
@@ -195,12 +196,12 @@ func (st *GlusterStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.D
 		Template: api.PodTemplateSpec{
 			ObjectMeta: api.ObjectMeta{
 				Labels: map[string]string{
-					"nfs-ganesha-node": s.Name,
-					"quartermaster":    s.Name,
+					"quartermaster": s.Name,
 				},
 				Name: s.Name,
 			},
 			Spec: api.PodSpec{
+				NodeName:     s.Spec.NodeName,
 				NodeSelector: s.Spec.NodeSelector,
 				Containers: []api.Container{
 					api.Container{
