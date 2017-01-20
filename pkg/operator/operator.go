@@ -22,6 +22,7 @@ import (
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 
 	"github.com/go-kit/kit/log"
 
@@ -43,7 +44,7 @@ type Operator struct {
 	rclient *restclient.RESTClient
 	logger  log.Logger
 
-	storageSystems map[spec.StorageTypeIdentifier]StorageType
+	storageSystems map[spec.StorageTypeIdentifier]qmstorage.StorageType
 
 	nodeInf   cache.SharedIndexInformer
 	dsetInf   cache.SharedIndexInformer
@@ -62,7 +63,7 @@ type Config struct {
 }
 
 // New creates a new controller.
-func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
+func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, error) {
 	cfg, err := newClusterConfig(c.Host, c.TLSInsecure, &c.TLSConfig)
 	if err != nil {
 		return nil, err
@@ -80,7 +81,7 @@ func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
 	}
 
 	// Initialize storage plugins
-	storageSystems := make(map[spec.StorageTypeIdentifier]StorageType)
+	storageSystems := make(map[spec.StorageTypeIdentifier]qmstorage.StorageType)
 	for _, newStorage := range storageFuns {
 
 		// New
@@ -105,7 +106,7 @@ func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
 	}, nil
 }
 
-func (c *Operator) GetStorage(name spec.StorageTypeIdentifier) (StorageType, error) {
+func (c *Operator) GetStorage(name spec.StorageTypeIdentifier) (qmstorage.StorageType, error) {
 	if storage, ok := c.storageSystems[name]; ok {
 		return storage, nil
 	} else {

@@ -20,6 +20,8 @@ import (
 
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
+
 	"github.com/heketi/heketi/pkg/heketitest"
 	"github.com/heketi/tests"
 	"github.com/heketi/utils"
@@ -37,8 +39,8 @@ func init() {
 	logger.SetLevel(utils.LEVEL_NOLOG)
 }
 
-func getGlusterStorageFromStorageOperator(o operator.StorageType) *GlusterStorage {
-	sfns := o.(*operator.StorageHandlerFuncs)
+func getGlusterStorageFromStorageOperator(o qmstorage.StorageType) *GlusterStorage {
+	sfns := o.(*qmstorage.StorageHandlerFuncs)
 	return sfns.StorageHandler.(*GlusterStorage)
 }
 
