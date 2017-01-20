@@ -15,7 +15,6 @@
 package glusterfs
 
 import (
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -23,8 +22,8 @@ import (
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/levels"
+
+	"github.com/heketi/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
@@ -38,15 +37,13 @@ import (
 )
 
 var (
-	logger levels.Levels
+	logger          = utils.NewLogger("glusterfs", utils.LEVEL_DEBUG)
+	heketiAddressFn = func(namespace string) (string, error) {
+		return "http://localhost:8080", nil
+	}
 )
 
-func init() {
-	logger = levels.New(log.NewContext(log.NewLogfmtLogger(os.Stdout)).
-		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
-}
-
-func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.StorageType, error) {
+func New(client clientset.Interface, qm restclient.Interface) (operator.StorageType, error) {
 	s := &GlusterStorage{
 		client: client,
 		qm:     qm,
@@ -68,17 +65,17 @@ func New(client *clientset.Clientset, qm *restclient.RESTClient) (operator.Stora
 }
 
 type GlusterStorage struct {
-	client *clientset.Clientset
-	qm     *restclient.RESTClient
+	client clientset.Interface
+	qm     restclient.Interface
 }
 
 func (st *GlusterStorage) Init() error {
-	logger.Debug().Log("msg", "init")
+	logger.Debug("msg init")
 	return nil
 }
 
 func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
-	logger.Debug().Log("msg", "add cluster", "cluster", c.Name)
+	logger.Debug("msg add cluster cluster %v", c.Name)
 
 	// Make sure Heketi is up and running
 	err := st.deployHeketi(c.Namespace)
@@ -86,28 +83,21 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 		return nil, err
 	}
 
-	// Get a client and test Hello
+	// Get a client
 	if c.Spec.GlusterFS == nil || len(c.Spec.GlusterFS.Cluster) == 0 {
-		httpAddress, err := st.getHeketiAddress(c.GetNamespace())
+		httpAddress, err := heketiAddressFn(c.GetNamespace())
 		if err != nil {
 			return nil, err
 		}
 
-		h := heketiclient.NewClientNoAuth("http://" + httpAddress + ":8080")
-		err = h.Hello()
-		if err != nil {
-			return nil, logger.Error().Log("err", "unable to communicate with Heketi",
-				"address", httpAddress)
-		} else {
-			logger.Debug().Log("msg", "heketi communication successful")
-		}
-
 		// Create a new cluster
+		// TODO(lpabon): Need to set user and secret
+		h := heketiclient.NewClientNoAuth(httpAddress)
 		hcluster, err := h.ClusterCreate()
 		if err != nil {
-			return nil, logger.Error().Log("err", "unable to create cluster in Heketi")
+			return nil, logger.LogError("err: unable to create cluster in Heketi: %v")
 		} else {
-			logger.Debug().Log("msg", "Created cluster", "cluster", c.GetName(), "cluster id", hcluster.Id)
+			logger.Debug("Created cluster %v cluster id %v", c.GetName(), hcluster.Id)
 		}
 
 		// Save cluster id in the spec
@@ -119,9 +109,9 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 	}
 
 	// No changes needed
-	logger.Info().Log("msg", "cluster already registered",
-		"cluster", c.GetName(),
-		"cluster id", c.Spec.GlusterFS.Cluster)
+	logger.Info("cluster already registered: cluster[%v] id[%v]",
+		c.GetName(),
+		c.Spec.GlusterFS.Cluster)
 	return nil, nil
 }
 
@@ -129,30 +119,30 @@ func (st *GlusterStorage) getHeketiAddress(namespace string) (string, error) {
 	/*
 		service, err := st.client.Core().Services(namespace).Get("heketi")
 		if err != nil {
-			return "", logger.Error().Log("msg", "error accessing heketi service", "err", err)
+			return "", logger.LogError().Log("msg", "error accessing heketi service", "err", err)
 		}
 	*/
 
 	//return service.Spec.ClusterIP, nil
 	// During development, running QM remotely, setup a portforward to heketi pod
-	return "localhost", nil
+	return "http://localhost:8080", nil
 }
 
 func (st *GlusterStorage) UpdateCluster(old *spec.StorageCluster,
 	new *spec.StorageCluster) error {
-	logger.Debug().Log("msg", "update", "cluster", old.Name)
+	logger.Debug("update cluster %v", old.Name)
 	return nil
 }
 
 func (st *GlusterStorage) DeleteCluster(c *spec.StorageCluster) error {
-	logger.Debug().Log("msg", "delete", "cluster", c.Name)
+	logger.Debug("delete cluster %v", c.Name)
 	return nil
 }
 
 func (st *GlusterStorage) MakeDeployment(c *spec.StorageCluster,
 	s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
-	logger.Debug().Log("msg", "make deployment", "node", s.Name)
+	logger.Debug("make deployment node %v", s.Name)
 
 	if s.Spec.Image == "" {
 		s.Spec.Image = "nginx"
@@ -229,25 +219,19 @@ func (st *GlusterStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.D
 }
 
 func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
+	logger.Debug("add node storagenode %v", s.Name)
 
-	httpAddress, err := st.getHeketiAddress(s.GetNamespace())
+	httpAddress, err := heketiAddressFn(s.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
 
 	h := heketiclient.NewClientNoAuth("http://" + httpAddress + ":8080")
-	err = h.Hello()
-	if err != nil {
-		return nil, logger.Error().Log("err", "unable to communicate with Heketi",
-			"address", httpAddress)
-	}
-
 	// Update cluster
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
 	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
 	if err != nil {
-		return nil, logger.Error().Log("err", err)
+		return nil, logger.Err(err)
 	}
 
 	// Add node to Heketi
@@ -263,7 +247,7 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 	}
 	node, err := h.NodeAdd(nodereq)
 	if err != nil {
-		return nil, logger.Error().Log("msg", "unable to add node", "node", s.GetName(), "err", err)
+		return nil, logger.LogError("unable to add node %v: %v", s.GetName(), err)
 	}
 
 	// Update node with new information
@@ -275,34 +259,28 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 }
 
 func (st *GlusterStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
+	logger.Debug("update node storagenode %v", s.Name)
 	return nil, nil
 }
 
 func (st *GlusterStorage) DeleteNode(s *spec.StorageNode) error {
-	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
+	logger.Debug("delete node storagenode %v", s.Name)
 
 	if len(s.Spec.GlusterFS.Node) == 0 {
 		return nil
 	}
 
-	httpAddress, err := st.getHeketiAddress(s.GetNamespace())
+	httpAddress, err := heketiAddressFn(s.GetNamespace())
 	if err != nil {
 		return err
 	}
 
 	h := heketiclient.NewClientNoAuth("http://" + httpAddress + ":8080")
-	err = h.Hello()
-	if err != nil {
-		return logger.Error().Log("err", "unable to communicate with Heketi",
-			"address", httpAddress)
-	}
-
 	return h.NodeDelete(s.Spec.GlusterFS.Node)
 }
 
 func (st *GlusterStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
-	logger.Debug().Log("msg", "status", "cluster", c.Name)
+	logger.Debug("status")
 	status := &spec.StorageStatus{}
 	return status, nil
 }
@@ -436,21 +414,22 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 	if apierrors.IsAlreadyExists(err) {
 		return nil
 	} else if err != nil {
-		logger.Error().Log("err", err)
+		logger.Err(err)
 	}
 
 	// REMOVE THIS
 	// TODO(lpabon) replace with actual wait()
-	time.Sleep(time.Second * 30)
+	time.Sleep(time.Microsecond * 30)
 
-	logger.Debug().Log("msg", "heketi deployed")
+	logger.Debug("heketi deployed")
 	return nil
 }
 
 func (st *GlusterStorage) deployHeketiServiceAccount(namespace string) error {
 	s := &api.ServiceAccount{
 		ObjectMeta: api.ObjectMeta{
-			Name: "heketi-service-account",
+			Name:      "heketi-service-account",
+			Namespace: namespace,
 		},
 	}
 
@@ -460,10 +439,10 @@ func (st *GlusterStorage) deployHeketiServiceAccount(namespace string) error {
 	if apierrors.IsAlreadyExists(err) {
 		return nil
 	} else if err != nil {
-		logger.Error().Log("err", err)
+		return logger.Err(err)
 	}
 
-	logger.Debug().Log("msg", "service account created")
+	logger.Debug("service account created")
 	return nil
 }
 
@@ -502,9 +481,9 @@ func (st *GlusterStorage) deployHeketiService(namespace string) error {
 	if apierrors.IsAlreadyExists(err) {
 		return nil
 	} else if err != nil {
-		logger.Error().Log("err", err)
+		logger.Err(err)
 	}
 
-	logger.Debug().Log("msg", "service account created")
+	logger.Debug("service account created")
 	return nil
 }

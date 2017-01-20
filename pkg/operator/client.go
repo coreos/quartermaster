@@ -31,7 +31,7 @@ import (
 
 const resyncPeriod = 5 * time.Minute
 
-func newQuartermasterRESTClient(c restclient.Config) (*restclient.RESTClient, error) {
+func NewQuartermasterRESTClient(c restclient.Config) (*restclient.RESTClient, error) {
 	c.APIPath = "/apis"
 	c.GroupVersion = &unversioned.GroupVersion{
 		Group:   "storage.coreos.com",

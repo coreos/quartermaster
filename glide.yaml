@@ -4,6 +4,13 @@ import:
   subpackages:
   - log
   - log/levels
+- package: github.com/heketi/heketi
+  version: 9a70d23952f5acbb932ce45c91e3afe4325c2eb0
+  subpackages:
+  - pkg/heketitest
+  - pkg/glusterfs/api
+- package: github.com/heketi/utils
+  version: 562752a7ffaa50306620f808970fedeccf3b54fb
 - package: k8s.io/kubernetes
   version: v1.5.1
   subpackages:

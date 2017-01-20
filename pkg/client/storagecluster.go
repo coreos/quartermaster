@@ -25,7 +25,7 @@ type StorageClusters struct {
 	t *Transport
 }
 
-func NewStorageClusters(c *restclient.RESTClient, namespace string) *StorageClusters {
+func NewStorageClusters(c restclient.Interface, namespace string) *StorageClusters {
 	return &StorageClusters{
 		t: NewTransport(c, namespace, "storageclusters"),
 	}

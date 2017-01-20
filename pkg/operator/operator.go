@@ -74,7 +74,7 @@ func New(c Config, storageFuns ...StorageTypeNewFunc) (*Operator, error) {
 	logger := log.NewContext(log.NewLogfmtLogger(os.Stdout)).
 		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
 
-	rclient, err := newQuartermasterRESTClient(*cfg)
+	rclient, err := NewQuartermasterRESTClient(*cfg)
 	if err != nil {
 		return nil, err
 	}
