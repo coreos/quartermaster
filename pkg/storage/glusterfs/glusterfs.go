@@ -221,17 +221,24 @@ func (st *GlusterStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.D
 func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug("add node storagenode %v", s.Name)
 
-	httpAddress, err := heketiAddressFn(s.GetNamespace())
-	if err != nil {
-		return nil, err
-	}
-
-	h := heketiclient.NewClientNoAuth("http://" + httpAddress + ":8080")
 	// Update cluster
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
 	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
 	if err != nil {
 		return nil, logger.Err(err)
+	}
+
+	// Check GlusterFS information was added
+	if cluster.Spec.GlusterFS == nil {
+		return nil, logger.Warning("Cluster spec %v/%v is missing glusterfs information",
+			cluster.Namespace, cluster.Name)
+	}
+	if len(cluster.Spec.GlusterFS.Cluster) == 0 {
+		return nil, logger.LogError("Cluster id is missing from storagecluster %v", cluster.Name)
+	}
+	if s.Spec.GlusterFS == nil {
+		return nil, logger.Warning("Node spec %v/%v is missing glusterfs information",
+			s.Namespace, s.Name)
 	}
 
 	// Add node to Heketi
@@ -245,6 +252,13 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 			Storage: sort.StringSlice{s.Spec.NodeName},
 		},
 	}
+
+	httpAddress, err := heketiAddressFn(s.GetNamespace())
+	if err != nil {
+		return nil, err
+	}
+
+	h := heketiclient.NewClientNoAuth(httpAddress)
 	node, err := h.NodeAdd(nodereq)
 	if err != nil {
 		return nil, logger.LogError("unable to add node %v: %v", s.GetName(), err)
@@ -275,7 +289,7 @@ func (st *GlusterStorage) DeleteNode(s *spec.StorageNode) error {
 		return err
 	}
 
-	h := heketiclient.NewClientNoAuth("http://" + httpAddress + ":8080")
+	h := heketiclient.NewClientNoAuth(httpAddress)
 	return h.NodeDelete(s.Spec.GlusterFS.Node)
 }
 

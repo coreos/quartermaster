@@ -19,12 +19,12 @@ import (
 	"reflect"
 	"testing"
 
+	//qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 	"github.com/coreos-inc/quartermaster/pkg/tests"
 	"github.com/coreos-inc/quartermaster/pkg/utils"
-
-	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 
 	"github.com/heketi/heketi/pkg/heketitest"
 
@@ -87,10 +87,6 @@ func TestGlusterFSAddClusterNoHeketi(t *testing.T) {
 	client := fakeclientset.NewSimpleClientset()
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
-		Client: fakerestclient.CreateHTTPClient(
-			func(req *http.Request) (*http.Response, error) {
-				return nil, nil
-			}),
 	}
 	op, err := New(client, rclient)
 	tests.Assert(t, err == nil)
@@ -131,10 +127,6 @@ func TestGlusterFSAddNewClusterWithHeketi(t *testing.T) {
 	client := fakeclientset.NewSimpleClientset()
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
-		Client: fakerestclient.CreateHTTPClient(
-			func(req *http.Request) (*http.Response, error) {
-				return nil, nil
-			}),
 	}
 	op, err := New(client, rclient)
 	tests.Assert(t, err == nil)
@@ -245,4 +237,115 @@ func TestGlusterFSMakeDeployment(t *testing.T) {
 	tests.Assert(t, deploy.Spec.Template.Spec.Containers[0].Image == n.Spec.Image)
 
 	// test volume mounts
+}
+
+func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
+	c := &spec.StorageCluster{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageCluster",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+		},
+		Spec: spec.StorageClusterSpec{
+			Type: "glusterfs",
+		},
+	}
+
+	n := &spec.StorageNode{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageNode",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+			Labels: map[string]string{
+				"sample": "label",
+			},
+		},
+		Spec: spec.StorageNodeSpec{
+			Type:     "glusterfs",
+			Image:    "myfakeimage",
+			NodeName: "mynode",
+			NodeSelector: map[string]string{
+				"my": "node",
+			},
+			ClusterRef: &api.ObjectReference{
+				Name: c.Name,
+			},
+		},
+	}
+
+	// Setup fake Heketi service
+	heketiServer := heketitest.NewHeketiMockTestServerDefault()
+	defer heketiServer.Close()
+
+	// Set server
+	called := 0
+	defer tests.Patch(&heketiAddressFn,
+		func(namespace string) (string, error) {
+			called++
+			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Setup fake Kube clients
+	client := fakeclientset.NewSimpleClientset()
+	rclient := &fakerestclient.RESTClient{
+		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		Client: fakerestclient.CreateHTTPClient(
+			func(req *http.Request) (*http.Response, error) {
+				if req.Method == "GET" && req.URL.Path == "/namespaces/test/storageclusters/test" {
+					resp := &http.Response{
+						StatusCode: http.StatusOK,
+					}
+
+					rc, err := tests.ObjectToJSONBody(c)
+					tests.Assert(t, err == nil)
+
+					header := http.Header{}
+					header.Set("Content-Type", "application/json; charset=UTF-8")
+
+					resp.Body = rc
+					resp.Header = header
+
+					return resp, nil
+				} else {
+					tests.Assert(t, false, "Unexpected request", req)
+				}
+
+				return nil, nil
+			}),
+	}
+	op, err := New(client, rclient)
+	tests.Assert(t, err == nil)
+
+	// Add the node without initializing the cluster
+	retn, err := op.AddNode(c, n)
+	tests.Assert(t, err != nil)
+	tests.Assert(t, retn == nil)
+
+	// Add the cluster
+	tests.Assert(t, c.Spec.GlusterFS == nil)
+	retc, err := op.AddCluster(c)
+	tests.Assert(t, called == 1)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, len(retc.Spec.GlusterFS.Cluster) != 0)
+
+	// Add node .. missing glusterfs information
+	retn, err = op.AddNode(c, n)
+	tests.Assert(t, err != nil)
+	tests.Assert(t, retn == nil)
+
+	// Add node with glusterfs information
+	n.Spec.GlusterFS = &spec.GlusterStorageNode{
+		Zone: 1,
+	}
+
+	retn, err = op.AddNode(c, n)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, retn != nil)
+
 }

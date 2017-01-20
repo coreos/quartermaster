@@ -121,10 +121,12 @@ func (l *Logger) Err(err error) error {
 }
 
 // Log warning information
-func (l *Logger) Warning(format string, v ...interface{}) {
+func (l *Logger) Warning(format string, v ...interface{}) error {
 	if l.level >= LEVEL_WARNING {
 		l.warninglog.Printf(format, v...)
 	}
+
+	return fmt.Errorf(format, v...)
 }
 
 // Log error variable as a warning
