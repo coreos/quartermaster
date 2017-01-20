@@ -22,8 +22,7 @@ import (
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
-
-	"github.com/heketi/utils"
+	"github.com/coreos-inc/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"

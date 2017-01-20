@@ -20,11 +20,12 @@ import (
 
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
+	"github.com/coreos-inc/quartermaster/pkg/tests"
+	"github.com/coreos-inc/quartermaster/pkg/utils"
+
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 
 	"github.com/heketi/heketi/pkg/heketitest"
-	"github.com/heketi/tests"
-	"github.com/heketi/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"

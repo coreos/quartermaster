@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/heketi/tests"
+	"github.com/coreos-inc/quartermaster/pkg/tests"
 	"strings"
 	"testing"
 )
