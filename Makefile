@@ -2,7 +2,7 @@
 # Based on http://chrismckenzie.io/post/deploying-with-golang/
 #
 
-.PHONY: version all run dist clean
+.PHONY: version all quartermaster run dist clean
 
 APP_NAME := quartermaster
 SHA := $(shell git rev-parse --short HEAD)
