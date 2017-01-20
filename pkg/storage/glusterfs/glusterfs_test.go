@@ -16,6 +16,7 @@ package glusterfs
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/coreos-inc/quartermaster/pkg/operator"
@@ -192,4 +193,56 @@ func TestGlusterFSExistingClusterWithHeketi(t *testing.T) {
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retc == nil)
 	tests.Assert(t, c.Spec.GlusterFS.Cluster == "ABC")
+}
+
+func TestGlusterFSMakeDeployment(t *testing.T) {
+	n := &spec.StorageNode{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageNode",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+			Labels: map[string]string{
+				"sample": "label",
+			},
+		},
+		Spec: spec.StorageNodeSpec{
+			Type:     "glusterfs",
+			Image:    "myfakeimage",
+			NodeName: "mynode",
+			NodeSelector: map[string]string{
+				"my": "node",
+			},
+		},
+	}
+
+	op, err := New(&clientset.Clientset{}, &restclient.RESTClient{})
+	tests.Assert(t, err == nil)
+	tests.Assert(t, op != nil)
+
+	// Get a deployment.No old deployment
+	// image is provided
+	deploy, err := op.MakeDeployment(&spec.StorageCluster{}, n, nil)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, deploy != nil)
+
+	// Test labels
+	n.Labels["quartermaster"] = n.Name
+	tests.Assert(t, reflect.DeepEqual(deploy.Labels, n.Labels))
+
+	// Test
+	tests.Assert(t, deploy.Name == n.Name)
+	tests.Assert(t, deploy.Namespace == n.Namespace)
+	tests.Assert(t, deploy.Spec.Replicas == 1)
+	tests.Assert(t, deploy.Spec.Template.Labels["quartermaster"] == n.Name)
+	tests.Assert(t, deploy.Spec.Template.Name == n.Name)
+	tests.Assert(t, reflect.DeepEqual(deploy.Spec.Template.Spec.NodeSelector, n.Spec.NodeSelector))
+	tests.Assert(t, deploy.Spec.Template.Spec.NodeName == n.Spec.NodeName)
+
+	tests.Assert(t, len(deploy.Spec.Template.Spec.Containers) == 1)
+	tests.Assert(t, deploy.Spec.Template.Spec.Containers[0].Image == n.Spec.Image)
+
+	// test volume mounts
 }
