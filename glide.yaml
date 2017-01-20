@@ -31,3 +31,8 @@ import:
   - pkg/util/runtime
   - pkg/util/wait
   - pkg/watch
+- package: github.com/lpabon/godbc
+- package: golang.org/x/crypto
+  subpackages:
+  - ssh
+  - ssh/agent
