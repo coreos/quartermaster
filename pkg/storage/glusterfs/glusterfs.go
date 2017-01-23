@@ -17,7 +17,6 @@ package glusterfs
 import (
 	"sort"
 	"strings"
-	"time"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
@@ -25,11 +24,9 @@ import (
 	"github.com/coreos-inc/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/util/intstr"
 
 	heketiclient "github.com/heketi/heketi/client/api/go-client"
 	heketiapi "github.com/heketi/heketi/pkg/glusterfs/api"
@@ -112,19 +109,6 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 		c.GetName(),
 		c.Spec.GlusterFS.Cluster)
 	return nil, nil
-}
-
-func (st *GlusterStorage) getHeketiAddress(namespace string) (string, error) {
-	/*
-		service, err := st.client.Core().Services(namespace).Get("heketi")
-		if err != nil {
-			return "", logger.LogError().Log("msg", "error accessing heketi service", "err", err)
-		}
-	*/
-
-	//return service.Spec.ClusterIP, nil
-	// During development, running QM remotely, setup a portforward to heketi pod
-	return "http://localhost:8080", nil
 }
 
 func (st *GlusterStorage) UpdateCluster(old *spec.StorageCluster,
@@ -219,7 +203,6 @@ func (st *GlusterStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.D
 }
 
 func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug("add node storagenode %v", s.Name)
 
 	// Update cluster
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
@@ -229,45 +212,92 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 	}
 
 	// Check GlusterFS information was added
-	if cluster.Spec.GlusterFS == nil {
-		return nil, logger.Warning("Cluster spec %v/%v is missing glusterfs information",
-			cluster.Namespace, cluster.Name)
+	err = IsGlusterFSStorageClusterUsable(c)
+	if err != nil {
+		return nil, err
 	}
-	if len(cluster.Spec.GlusterFS.Cluster) == 0 {
-		return nil, logger.LogError("Cluster id is missing from storagecluster %v", cluster.Name)
-	}
-	if s.Spec.GlusterFS == nil {
-		return nil, logger.Warning("Node spec %v/%v is missing glusterfs information",
-			s.Namespace, s.Name)
-	}
-
-	// Add node to Heketi
-	nodereq := &heketiapi.NodeAddRequest{
-		Zone:      s.Spec.GlusterFS.Zone,
-		ClusterId: cluster.Spec.GlusterFS.Cluster,
-		Hostnames: heketiapi.HostAddresses{
-			Manage: sort.StringSlice{s.Spec.NodeName},
-
-			// TODO(lpabon): Real IP of node must be added here
-			Storage: sort.StringSlice{s.Spec.NodeName},
-		},
-	}
-
-	httpAddress, err := heketiAddressFn(s.GetNamespace())
+	err = IsGlusterFSStorageNodeUsable(s)
 	if err != nil {
 		return nil, err
 	}
 
-	h := heketiclient.NewClientNoAuth(httpAddress)
-	node, err := h.NodeAdd(nodereq)
+	// Get a client to Heketi
+	h, err := st.heketiClient(s.GetNamespace())
 	if err != nil {
-		return nil, logger.LogError("unable to add node %v: %v", s.GetName(), err)
+		return nil, err
 	}
 
-	// Update node with new information
-	s.Spec.GlusterFS.Cluster = cluster.Spec.GlusterFS.Cluster
-	s.Spec.GlusterFS.Node = node.Id
-	s.Status.Ready = true
+	// Check if the node has already been added
+	if len(s.Spec.GlusterFS.Node) != 0 {
+		// Check node ID
+		_, err := h.NodeInfo(s.Spec.GlusterFS.Node)
+		if err != nil {
+			return nil, logger.Critical("Storage node %v/%v has a glusterfs id of %v but "+
+				"the GlusterFS cluster does not recognize it.",
+				s.GetNamespace(), s.GetName(), s.Spec.GlusterFS.Node)
+		}
+	} else {
+		// Add node to Heketi
+		nodereq := &heketiapi.NodeAddRequest{
+			Zone:      s.Spec.GlusterFS.Zone,
+			ClusterId: cluster.Spec.GlusterFS.Cluster,
+			Hostnames: heketiapi.HostAddresses{
+				Manage: sort.StringSlice{s.Spec.NodeName},
+
+				// TODO(lpabon): Real IP of node must be added here
+				Storage: sort.StringSlice{s.Spec.NodeName},
+			},
+		}
+
+		// Add node to Heketi
+		node, err := h.NodeAdd(nodereq)
+		if err != nil {
+			return nil, logger.LogError("unable to add node %v: %v", s.GetName(), err)
+		}
+		logger.Info("Added node %v/%v with id %v", s.GetNamespace(), s.GetName(), node.Id)
+
+		// Update node with new information
+		s.Spec.GlusterFS.Cluster = cluster.Spec.GlusterFS.Cluster
+		s.Spec.GlusterFS.Node = node.Id
+		s.Status.Ready = true
+	}
+
+	// Check if there are any devices to add
+	if len(s.Spec.Devices) == 0 {
+		logger.Warning("No devices defined for node %v/%v", s.GetNamespace(), s.GetName())
+		return s, nil
+	}
+
+	// Get full node information
+	nodeInfo, err := h.NodeInfo(s.Spec.GlusterFS.Node)
+	if err != nil {
+		return nil, logger.LogError("Unable to get node %v/%v information from Heketi using id %v",
+			s.GetNamespace(), s.GetName(), s.Spec.GlusterFS.Node)
+	}
+
+	// Add devices
+	for _, device := range s.Spec.Devices {
+		// Check device to see if it is setup alreaedy
+		_, err := st.heketiIdForDevice(device, nodeInfo)
+		if err != nil {
+			// Add device
+			err := h.DeviceAdd(&heketiapi.DeviceAddRequest{
+				Device: heketiapi.Device{
+					Name: device,
+				},
+				NodeId: s.Spec.GlusterFS.Node,
+			})
+			if err != nil {
+				logger.Warning("Unable to add device %v/%v %v. Please ignore conflicts",
+					s.GetNamespace(), s.GetName(), device)
+			} else {
+				logger.Info("Registered %v/%v %v", s.GetNamespace(), s.GetName(), device)
+			}
+
+		} else {
+			logger.Debug("Already registered %v/%v %v", s.GetNamespace(), s.GetName(), device)
+		}
+	}
 
 	return s, nil
 }
@@ -306,198 +336,4 @@ func (st *GlusterStorage) Type() spec.StorageTypeIdentifier {
 func dashifyPath(s string) string {
 	s = strings.TrimLeft(s, "/")
 	return strings.Replace(s, "/", "-", -1)
-}
-
-func (st *GlusterStorage) deployHeketi(namespace string) error {
-	// Create a service account for Heketi
-	err := st.deployHeketiServiceAccount(namespace)
-	if err != nil {
-		return err
-	}
-
-	// Deployment
-	err = st.deployHeketiPod(namespace)
-	if err != nil {
-		return err
-	}
-
-	// Create service to access Heketi API
-	return st.deployHeketiService(namespace)
-}
-
-func (st *GlusterStorage) deployHeketiPod(namespace string) error {
-
-	// Deployment for Heketi
-	d := &extensions.Deployment{
-		ObjectMeta: api.ObjectMeta{
-			Name:      "heketi",
-			Namespace: namespace,
-			Annotations: map[string]string{
-				"description": "Defines how to deploy Heketi",
-			},
-			Labels: map[string]string{
-				"glusterfs":     "heketi-deployment",
-				"heketi":        "heketi-deployment",
-				"quartermaster": "heketi",
-			},
-		},
-		Spec: extensions.DeploymentSpec{
-			Replicas: 1,
-			Template: api.PodTemplateSpec{
-				ObjectMeta: api.ObjectMeta{
-					Labels: map[string]string{"glusterfs": "heketi-deployment",
-						"heketi":        "heketi-deployment",
-						"quartermaster": "heketi",
-						"name":          "heketi",
-					},
-					Name: "heketi",
-				},
-				Spec: api.PodSpec{
-					ServiceAccountName: "heketi-service-account",
-					Containers: []api.Container{
-						api.Container{
-							Name:            "heketi",
-							Image:           "heketi/heketi:dev",
-							ImagePullPolicy: api.PullIfNotPresent,
-							Env: []api.EnvVar{
-								api.EnvVar{
-									Name: "HEKETI_EXECUTOR",
-
-									// TODO(lpabon): DEMO ONLY.  Put back
-									// to a value of "kubernetes"
-									Value: "mock",
-								},
-								api.EnvVar{
-									Name:  "HEKETI_FSTAB",
-									Value: "/var/lib/heketi/fstab",
-								},
-								api.EnvVar{
-									Name:  "HEKETI_SNAPSHOT_LIMIT",
-									Value: "14",
-								},
-							},
-							Ports: []api.ContainerPort{
-								api.ContainerPort{
-									ContainerPort: 8080,
-								},
-							},
-							VolumeMounts: []api.VolumeMount{
-								api.VolumeMount{
-									Name:      "db",
-									MountPath: "/var/lib/heketi",
-								},
-							},
-							ReadinessProbe: &api.Probe{
-								TimeoutSeconds:      3,
-								InitialDelaySeconds: 3,
-								Handler: api.Handler{
-									HTTPGet: &api.HTTPGetAction{
-										Path: "/hello",
-										Port: intstr.IntOrString{
-											IntVal: 8080,
-										},
-									},
-								},
-							},
-							LivenessProbe: &api.Probe{
-								TimeoutSeconds:      3,
-								InitialDelaySeconds: 30,
-								Handler: api.Handler{
-									HTTPGet: &api.HTTPGetAction{
-										Path: "/hello",
-										Port: intstr.IntOrString{
-											IntVal: 8080,
-										},
-									},
-								},
-							},
-						},
-					},
-					Volumes: []api.Volume{
-						api.Volume{
-							Name: "db",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	deployments := st.client.Extensions().Deployments(namespace)
-	_, err := deployments.Create(d)
-	if apierrors.IsAlreadyExists(err) {
-		return nil
-	} else if err != nil {
-		logger.Err(err)
-	}
-
-	// REMOVE THIS
-	// TODO(lpabon) replace with actual wait()
-	time.Sleep(time.Microsecond * 30)
-
-	logger.Debug("heketi deployed")
-	return nil
-}
-
-func (st *GlusterStorage) deployHeketiServiceAccount(namespace string) error {
-	s := &api.ServiceAccount{
-		ObjectMeta: api.ObjectMeta{
-			Name:      "heketi-service-account",
-			Namespace: namespace,
-		},
-	}
-
-	// Submit the service account
-	serviceaccounts := st.client.Core().ServiceAccounts(namespace)
-	_, err := serviceaccounts.Create(s)
-	if apierrors.IsAlreadyExists(err) {
-		return nil
-	} else if err != nil {
-		return logger.Err(err)
-	}
-
-	logger.Debug("service account created")
-	return nil
-}
-
-func (st *GlusterStorage) deployHeketiService(namespace string) error {
-	s := &api.Service{
-		ObjectMeta: api.ObjectMeta{
-			Name:      "heketi",
-			Namespace: namespace,
-			Labels: map[string]string{
-				"glusterfs": "heketi-service",
-				"heketi":    "support",
-			},
-			Annotations: map[string]string{
-				"description": "Exposes Heketi Service",
-			},
-		},
-		Spec: api.ServiceSpec{
-			Selector: map[string]string{
-				"name": "heketi",
-			},
-			Ports: []api.ServicePort{
-				api.ServicePort{
-					Name: "heketi",
-					Port: 8080,
-					TargetPort: intstr.IntOrString{
-						IntVal: 8080,
-					},
-				},
-			},
-		},
-	}
-
-	// Submit the service
-	services := st.client.Core().Services(namespace)
-	_, err := services.Create(s)
-	if apierrors.IsAlreadyExists(err) {
-		return nil
-	} else if err != nil {
-		logger.Err(err)
-	}
-
-	logger.Debug("service account created")
-	return nil
 }

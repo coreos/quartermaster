@@ -26,6 +26,7 @@ import (
 	"github.com/coreos-inc/quartermaster/pkg/tests"
 	"github.com/coreos-inc/quartermaster/pkg/utils"
 
+	heketiclient "github.com/heketi/heketi/client/api/go-client"
 	"github.com/heketi/heketi/pkg/heketitest"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -348,4 +349,272 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retn != nil)
 
+}
+
+func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
+	c := &spec.StorageCluster{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageCluster",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+		},
+		Spec: spec.StorageClusterSpec{
+			Type: "glusterfs",
+		},
+	}
+
+	n := &spec.StorageNode{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageNode",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+			Labels: map[string]string{
+				"sample": "label",
+			},
+		},
+		Spec: spec.StorageNodeSpec{
+			Type:     "glusterfs",
+			Image:    "myfakeimage",
+			NodeName: "mynode",
+			NodeSelector: map[string]string{
+				"my": "node",
+			},
+			ClusterRef: &api.ObjectReference{
+				Name: c.Name,
+			},
+			Devices: []string{
+				"/dev/fake1",
+				"/dev/fake2",
+				"/dev/fake3",
+			},
+			GlusterFS: &spec.GlusterStorageNode{
+				Zone: 20,
+			},
+		},
+	}
+
+	// Setup fake Heketi service
+	heketiServer := heketitest.NewHeketiMockTestServerDefault()
+	defer heketiServer.Close()
+
+	// Set server
+	called := 0
+	defer tests.Patch(&heketiAddressFn,
+		func(namespace string) (string, error) {
+			called++
+			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Setup fake Kube clients
+	client := fakeclientset.NewSimpleClientset()
+	rclient := &fakerestclient.RESTClient{
+		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		Client: fakerestclient.CreateHTTPClient(
+			func(req *http.Request) (*http.Response, error) {
+				if req.Method == "GET" && req.URL.Path == "/namespaces/test/storageclusters/test" {
+					resp := &http.Response{
+						StatusCode: http.StatusOK,
+					}
+
+					rc, err := tests.ObjectToJSONBody(c)
+					tests.Assert(t, err == nil)
+
+					header := http.Header{}
+					header.Set("Content-Type", "application/json; charset=UTF-8")
+
+					resp.Body = rc
+					resp.Header = header
+
+					return resp, nil
+				} else {
+					tests.Assert(t, false, "Unexpected request", req)
+				}
+
+				return nil, nil
+			}),
+	}
+	op, err := New(client, rclient)
+	tests.Assert(t, err == nil)
+
+	// Add the cluster
+	tests.Assert(t, c.Spec.GlusterFS == nil)
+	retc, err := op.AddCluster(c)
+	tests.Assert(t, called == 1)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, retc != nil)
+
+	// Add node
+	retn, err := op.AddNode(c, n)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, retn != nil)
+
+	// Get Node information to check devices were registered
+	h := heketiclient.NewClientNoAuth(heketiServer.URL())
+	tests.Assert(t, h != nil)
+	nodeInfo, err := h.NodeInfo(retn.Spec.GlusterFS.Node)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, len(retn.Spec.Devices) == len(nodeInfo.DevicesInfo))
+
+	for _, device := range retn.Spec.Devices {
+		found := false
+		for _, check := range nodeInfo.DevicesInfo {
+			if device == check.Name {
+				found = true
+				break
+			}
+		}
+		tests.Assert(t, found, device, nodeInfo.DevicesInfo)
+	}
+}
+
+func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
+	c := &spec.StorageCluster{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageCluster",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+		},
+		Spec: spec.StorageClusterSpec{
+			Type: "glusterfs",
+		},
+	}
+
+	n := &spec.StorageNode{
+		TypeMeta: unversioned.TypeMeta{
+			Kind:       "StorageNode",
+			APIVersion: operator.TPRVersion,
+		},
+		ObjectMeta: api.ObjectMeta{
+			Name:      "test",
+			Namespace: "test",
+			Labels: map[string]string{
+				"sample": "label",
+			},
+		},
+		Spec: spec.StorageNodeSpec{
+			Type:     "glusterfs",
+			Image:    "myfakeimage",
+			NodeName: "mynode",
+			NodeSelector: map[string]string{
+				"my": "node",
+			},
+			ClusterRef: &api.ObjectReference{
+				Name: c.Name,
+			},
+			Devices: []string{
+				"/dev/fake1",
+				"/dev/fake2",
+				"/dev/fake3",
+			},
+			GlusterFS: &spec.GlusterStorageNode{
+				Zone: 20,
+			},
+		},
+	}
+
+	// Setup fake Heketi service
+	heketiServer := heketitest.NewHeketiMockTestServerDefault()
+	defer heketiServer.Close()
+
+	// Set server
+	called := 0
+	defer tests.Patch(&heketiAddressFn,
+		func(namespace string) (string, error) {
+			called++
+			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Setup fake Kube clients
+	client := fakeclientset.NewSimpleClientset()
+	rclient := &fakerestclient.RESTClient{
+		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		Client: fakerestclient.CreateHTTPClient(
+			func(req *http.Request) (*http.Response, error) {
+				if req.Method == "GET" && req.URL.Path == "/namespaces/test/storageclusters/test" {
+					resp := &http.Response{
+						StatusCode: http.StatusOK,
+					}
+
+					rc, err := tests.ObjectToJSONBody(c)
+					tests.Assert(t, err == nil)
+
+					header := http.Header{}
+					header.Set("Content-Type", "application/json; charset=UTF-8")
+
+					resp.Body = rc
+					resp.Header = header
+
+					return resp, nil
+				} else {
+					tests.Assert(t, false, "Unexpected request", req)
+				}
+
+				return nil, nil
+			}),
+	}
+	op, err := New(client, rclient)
+	tests.Assert(t, err == nil)
+
+	// Add the cluster
+	tests.Assert(t, c.Spec.GlusterFS == nil)
+	retc, err := op.AddCluster(c)
+	tests.Assert(t, called == 1)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, retc != nil)
+
+	// Add node
+	retn, err := op.AddNode(c, n)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, retn != nil)
+
+	// Get Node information to check devices were registered
+	h := heketiclient.NewClientNoAuth(heketiServer.URL())
+	tests.Assert(t, h != nil)
+	nodeInfo, err := h.NodeInfo(retn.Spec.GlusterFS.Node)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, len(retn.Spec.Devices) == len(nodeInfo.DevicesInfo))
+
+	for _, device := range retn.Spec.Devices {
+		found := false
+		for _, check := range nodeInfo.DevicesInfo {
+			if device == check.Name {
+				found = true
+				break
+			}
+		}
+		tests.Assert(t, found, device, nodeInfo.DevicesInfo)
+	}
+
+	// Now add one device
+	retn.Spec.Devices = append(retn.Spec.Devices, "/dev/added")
+
+	// Add new device to node
+	retn, err = op.AddNode(c, retn)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, retn != nil)
+
+	// Get Node information to check the new device was added
+	nodeInfo, err = h.NodeInfo(retn.Spec.GlusterFS.Node)
+	tests.Assert(t, err == nil)
+	tests.Assert(t, len(retn.Spec.Devices) == len(nodeInfo.DevicesInfo))
+
+	for _, device := range retn.Spec.Devices {
+		found := false
+		for _, check := range nodeInfo.DevicesInfo {
+			if device == check.Name {
+				found = true
+				break
+			}
+		}
+		tests.Assert(t, found, device, nodeInfo.DevicesInfo)
+	}
 }
