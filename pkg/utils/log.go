@@ -96,10 +96,12 @@ func (l *Logger) SetLevel(level LogLevel) {
 }
 
 // Log critical information
-func (l *Logger) Critical(format string, v ...interface{}) {
+func (l *Logger) Critical(format string, v ...interface{}) error {
 	if l.level >= LEVEL_CRITICAL {
 		logWithLongFile(l.critlog, format, v...)
 	}
+
+	return fmt.Errorf(format, v...)
 }
 
 // Log error string
