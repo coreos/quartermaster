@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
+	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
 	"github.com/coreos-inc/quartermaster/pkg/utils"
@@ -36,6 +37,9 @@ var (
 	logger          = utils.NewLogger("glusterfs", utils.LEVEL_DEBUG)
 	heketiAddressFn = func(namespace string) (string, error) {
 		return "http://localhost:8080", nil
+	}
+	waitForDeploymentFn = func(client clientset.Interface, namespace, name string, available int32) error {
+		return operator.WaitForDeploymentReady(client, namespace, name, available)
 	}
 )
 
@@ -91,7 +95,7 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 		h := heketiclient.NewClientNoAuth(httpAddress)
 		hcluster, err := h.ClusterCreate()
 		if err != nil {
-			return nil, logger.LogError("err: unable to create cluster in Heketi: %v")
+			return nil, logger.LogError("err: unable to create cluster in Heketi: %v", err)
 		} else {
 			logger.Debug("Created cluster %v cluster id %v", c.GetName(), hcluster.Id)
 		}
@@ -125,12 +129,13 @@ func (st *GlusterStorage) DeleteCluster(c *spec.StorageCluster) error {
 func (st *GlusterStorage) MakeDeployment(c *spec.StorageCluster,
 	s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
-	logger.Debug("make deployment node %v", s.Name)
 
+	// TODO(lpabon): Make this required
 	if s.Spec.Image == "" {
-		s.Spec.Image = "nginx"
+		s.Spec.Image = "gluster/gluster-centos:latest"
 	}
-	spec, err := st.makeDeploymentSpec(s)
+
+	spec, err := st.makeGlusterFSDeploymentSpec(s)
 	if err != nil {
 		return nil, err
 	}
@@ -154,54 +159,6 @@ func (st *GlusterStorage) MakeDeployment(c *spec.StorageCluster,
 	return deployment, nil
 }
 
-func (st *GlusterStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
-	var volumes []api.Volume
-	var mounts []api.VolumeMount
-
-	// TODO(lpabon): Remove this
-	for _, path := range s.Spec.Directories {
-		dash := dashifyPath(path)
-		volumes = append(volumes, api.Volume{
-			Name: dash,
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
-					Path: path,
-				},
-			},
-		})
-		mounts = append(mounts, api.VolumeMount{
-			Name:      dash,
-			MountPath: path,
-		})
-	}
-
-	spec := &extensions.DeploymentSpec{
-		Replicas: 1,
-		Template: api.PodTemplateSpec{
-			ObjectMeta: api.ObjectMeta{
-				Labels: map[string]string{
-					"quartermaster": s.Name,
-				},
-				Name: s.Name,
-			},
-			Spec: api.PodSpec{
-				NodeName:     s.Spec.NodeName,
-				NodeSelector: s.Spec.NodeSelector,
-				Containers: []api.Container{
-					api.Container{
-						Name:            s.Name,
-						Image:           s.Spec.Image,
-						ImagePullPolicy: api.PullIfNotPresent,
-						VolumeMounts:    mounts,
-					},
-				},
-				Volumes: volumes,
-			},
-		},
-	}
-	return spec, nil
-}
-
 func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
 
 	// Update cluster
@@ -212,7 +169,7 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 	}
 
 	// Check GlusterFS information was added
-	err = IsGlusterFSStorageClusterUsable(c)
+	err = IsGlusterFSStorageClusterUsable(cluster)
 	if err != nil {
 		return nil, err
 	}
@@ -226,6 +183,13 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 	if err != nil {
 		return nil, err
 	}
+
+	// Get storage ip
+	if s.Spec.StorageNetwork == nil {
+		return nil, logger.Warning("StorageNetwork has not been defined for %v/%v",
+			s.GetNamespace(), s.GetName())
+	}
+	storageip := s.Spec.StorageNetwork.IPs[0]
 
 	// Check if the node has already been added
 	if len(s.Spec.GlusterFS.Node) != 0 {
@@ -242,10 +206,8 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 			Zone:      s.Spec.GlusterFS.Zone,
 			ClusterId: cluster.Spec.GlusterFS.Cluster,
 			Hostnames: heketiapi.HostAddresses{
-				Manage: sort.StringSlice{s.Spec.NodeName},
-
-				// TODO(lpabon): Real IP of node must be added here
-				Storage: sort.StringSlice{s.Spec.NodeName},
+				Manage:  sort.StringSlice{s.Spec.NodeName},
+				Storage: sort.StringSlice{storageip},
 			},
 		}
 
@@ -288,8 +250,8 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 				NodeId: s.Spec.GlusterFS.Node,
 			})
 			if err != nil {
-				logger.Warning("Unable to add device %v/%v %v. Please ignore conflicts",
-					s.GetNamespace(), s.GetName(), device)
+				logger.LogError("Unable to add device %v/%v %v: %v",
+					s.GetNamespace(), s.GetName(), device, err)
 			} else {
 				logger.Info("Registered %v/%v %v", s.GetNamespace(), s.GetName(), device)
 			}
@@ -314,12 +276,27 @@ func (st *GlusterStorage) DeleteNode(s *spec.StorageNode) error {
 		return nil
 	}
 
-	httpAddress, err := heketiAddressFn(s.GetNamespace())
+	// Get a client to Heketi
+	h, err := st.heketiClient(s.GetNamespace())
 	if err != nil {
-		return err
+		return logger.Err(err)
 	}
 
-	h := heketiclient.NewClientNoAuth(httpAddress)
+	// Get device information
+	node, err := h.NodeInfo(s.Spec.GlusterFS.Node)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	// Delete all devices
+	for _, d := range node.DevicesInfo {
+		err := h.DeviceDelete(d.Id)
+		if err != nil {
+			logger.Err(err)
+		}
+	}
+
+	// Delete node
 	return h.NodeDelete(s.Spec.GlusterFS.Node)
 }
 

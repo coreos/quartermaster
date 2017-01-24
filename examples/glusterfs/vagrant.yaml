@@ -1,0 +1,37 @@
+apiVersion: storage.coreos.com/v1alpha1
+kind: StorageCluster
+metadata:
+    name: gluster
+spec:
+    type: glusterfs
+    storageNodes:
+        - nodeName: node0
+          storageNetwork:
+            ips:
+                - 192.168.10.100
+          devices:
+              - /dev/vdb
+              - /dev/vdc
+              - /dev/vdd
+          glusterfs:
+              zone: 1
+        - nodeName: node1
+          storageNetwork:
+            ips:
+                - 192.168.10.101
+          devices:
+              - /dev/vdb
+              - /dev/vdc
+              - /dev/vdd
+          glusterfs:
+              zone: 2
+        - nodeName: node2
+          storageNetwork:
+            ips:
+                - 192.168.10.102
+          devices:
+              - /dev/vdb
+              - /dev/vdc
+              - /dev/vdd
+          glusterfs:
+              zone: 3

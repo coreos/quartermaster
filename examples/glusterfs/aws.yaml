@@ -6,17 +6,26 @@ spec:
     type: glusterfs
     storageNodes:
         - nodeName: ip-10-0-0-167.us-west-2.compute.internal
+          storageNetwork:
+            ips:
+                - 10.0.0.167
+          devices:
+              - /dev/xvdf
           glusterfs:
               zone: 1
-          directories:
-              - /export
         - nodeName: ip-10-0-0-168.us-west-2.compute.internal
+          storageNetwork:
+            ips:
+                - 10.0.0.168
+          devices:
+              - /dev/xvdf
           glusterfs:
               zone: 2
-          directories:
-              - /export
         - nodeName: ip-10-0-0-169.us-west-2.compute.internal
+          storageNetwork:
+            ips:
+                - 10.0.0.169
+          devices:
+              - /dev/xvdf
           glusterfs:
               zone: 3
-          directories:
-              - /export

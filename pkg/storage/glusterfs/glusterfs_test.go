@@ -85,6 +85,13 @@ func TestGlusterFSAddClusterNoHeketi(t *testing.T) {
 			Type: "glusterfs",
 		},
 	}
+
+	// Don't wait for deployemnt
+	defer tests.Patch(&waitForDeploymentFn,
+		func(client clientset.Interface, namespace, name string, available int32) error {
+			return nil
+		}).Restore()
+
 	client := fakeclientset.NewSimpleClientset()
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
@@ -122,6 +129,12 @@ func TestGlusterFSAddNewClusterWithHeketi(t *testing.T) {
 		func(namespace string) (string, error) {
 			called++
 			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Don't wait for deployemnt
+	defer tests.Patch(&waitForDeploymentFn,
+		func(client clientset.Interface, namespace, name string, available int32) error {
+			return nil
 		}).Restore()
 
 	// Setup fake Kube clients
@@ -167,6 +180,12 @@ func TestGlusterFSExistingClusterWithHeketi(t *testing.T) {
 		func(namespace string) (string, error) {
 			called++
 			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Don't wait for deployemnt
+	defer tests.Patch(&waitForDeploymentFn,
+		func(client clientset.Interface, namespace, name string, available int32) error {
+			return nil
 		}).Restore()
 
 	// Setup fake Kube clients
@@ -271,6 +290,9 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 			Type:     "glusterfs",
 			Image:    "myfakeimage",
 			NodeName: "mynode",
+			StorageNetwork: &spec.StorageNodeNetwork{
+				IPs: []string{"1.1.1.1"},
+			},
 			NodeSelector: map[string]string{
 				"my": "node",
 			},
@@ -290,6 +312,12 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 		func(namespace string) (string, error) {
 			called++
 			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Don't wait for deployemnt
+	defer tests.Patch(&waitForDeploymentFn,
+		func(client clientset.Interface, namespace, name string, available int32) error {
+			return nil
 		}).Restore()
 
 	// Setup fake Kube clients
@@ -385,6 +413,9 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 			NodeSelector: map[string]string{
 				"my": "node",
 			},
+			StorageNetwork: &spec.StorageNodeNetwork{
+				IPs: []string{"1.1.1.1"},
+			},
 			ClusterRef: &api.ObjectReference{
 				Name: c.Name,
 			},
@@ -409,6 +440,12 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 		func(namespace string) (string, error) {
 			called++
 			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Don't wait for deployemnt
+	defer tests.Patch(&waitForDeploymentFn,
+		func(client clientset.Interface, namespace, name string, available int32) error {
+			return nil
 		}).Restore()
 
 	// Setup fake Kube clients
@@ -507,6 +544,9 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 			NodeSelector: map[string]string{
 				"my": "node",
 			},
+			StorageNetwork: &spec.StorageNodeNetwork{
+				IPs: []string{"1.1.1.1"},
+			},
 			ClusterRef: &api.ObjectReference{
 				Name: c.Name,
 			},
@@ -531,6 +571,12 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 		func(namespace string) (string, error) {
 			called++
 			return heketiServer.URL(), nil
+		}).Restore()
+
+	// Don't wait for deployemnt
+	defer tests.Patch(&waitForDeploymentFn,
+		func(client clientset.Interface, namespace, name string, available int32) error {
+			return nil
 		}).Restore()
 
 	// Setup fake Kube clients
