@@ -21,6 +21,7 @@ import (
 
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/v1"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
@@ -49,6 +50,21 @@ func WaitForTPRReady(restClient restclient.Interface, tprGroup, tprVersion, tprN
 		}
 
 		return true, nil
+	})
+}
+
+func WaitForDeploymentReady(client clientset.Interface, namespace, name string, available int32) error {
+	return wait.Poll(3*time.Second, 10*time.Minute, func() (bool, error) {
+		deployments := client.Extensions().Deployments(namespace)
+		deployment, err := deployments.Get(name)
+		if err != nil {
+			return false, err
+		}
+
+		if available == deployment.Status.AvailableReplicas {
+			return true, nil
+		}
+		return false, nil
 	})
 }
 

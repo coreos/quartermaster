@@ -100,11 +100,8 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 							ImagePullPolicy: api.PullIfNotPresent,
 							Env: []api.EnvVar{
 								api.EnvVar{
-									Name: "HEKETI_EXECUTOR",
-
-									// TODO(lpabon): DEMO ONLY.  Put back
-									// to a value of "kubernetes"
-									Value: "mock",
+									Name:  "HEKETI_EXECUTOR",
+									Value: "kubernetes",
 								},
 								api.EnvVar{
 									Name:  "HEKETI_FSTAB",
@@ -168,6 +165,12 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 		return nil
 	} else if err != nil {
 		logger.Err(err)
+	}
+
+	// Wait until deployment ready
+	err = waitForDeploymentFn(st.client, namespace, d.GetName(), d.Spec.Replicas)
+	if err != nil {
+		return logger.Err(err)
 	}
 
 	logger.Debug("heketi deployed")

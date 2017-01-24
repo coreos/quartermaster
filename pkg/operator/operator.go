@@ -296,18 +296,21 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 
 	key, err := keyFunc(s)
 	if err != nil {
-		return c.logger.Log("err", err)
+		c.logger.Log("err", err)
+		return err
 	}
 
 	// Get plugin
 	storage, err := c.GetStorage(s.Spec.Type)
 	if err != nil {
-		return c.logger.Log("err", err)
+		c.logger.Log("err", err)
+		return err
 	}
 
 	obj, exists, err := c.nodeInf.GetStore().GetByKey(key)
 	if err != nil {
-		return c.logger.Log("err", err)
+		c.logger.Log("err", err)
+		return err
 	}
 
 	if !exists {
@@ -322,17 +325,20 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 
 		err := storage.DeleteNode(s)
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.kclient)
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		err = reaper.Stop(s.Namespace, s.Name, time.Minute, api.NewDeleteOptions(0))
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		return nil
@@ -344,7 +350,8 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	// DeepCopy CS
 	s, err = storageNodeDeepCopy(s)
 	if err != nil {
-		return c.logger.Log("err", err)
+		c.logger.Log("err", err)
+		return err
 	}
 
 	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
@@ -363,20 +370,29 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		// Get a deployment from plugin
 		ds, err := storage.MakeDeployment(clusterSpec, s, nil)
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		if _, err := dsetClient.Create(ds); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
-				return c.logger.Log("msg", "unable to create deployment", "err", err)
+				c.logger.Log("msg", "unable to create deployment", "err", err)
+				return err
 			}
 		}
-		// :TODO: Wait until it is ready
+
+		// Wait until it is ready
+		err = WaitForDeploymentReady(c.kclient, s.GetNamespace(), s.GetName(), ds.Spec.Replicas)
+		if err != nil {
+			c.logger.Log("err", err)
+			return err
+		}
 
 		// Add node
 		updated, err := storage.AddNode(clusterSpec, s)
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		// Update node object
@@ -384,7 +400,8 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
 			_, err = storagenodes.Update(updated)
 			if err != nil {
-				return c.logger.Log("err", err)
+				c.logger.Log("err", err)
+				return err
 			}
 		}
 	} else {
@@ -393,19 +410,22 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			s,
 			obj.(*extensions.Deployment))
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		// TODO(barakmich): This may be broken for DaemonSets.
 		// Will be fixed when DaemonSets do rolling updates.
 		if _, err := dsetClient.Update(ds); err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 
 		// Update Node
 		_, err = storage.UpdateNode(clusterSpec, s)
 		if err != nil {
-			return c.logger.Log("err", err)
+			c.logger.Log("err", err)
+			return err
 		}
 	}
 
