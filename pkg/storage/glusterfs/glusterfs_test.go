@@ -86,6 +86,12 @@ func TestGlusterFSAddClusterNoHeketi(t *testing.T) {
 		},
 	}
 
+	// Set to garbage
+	defer tests.Patch(&heketiAddressFn,
+		func(namespace string) (string, error) {
+			return "http://nothing:12345", nil
+		}).Restore()
+
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {

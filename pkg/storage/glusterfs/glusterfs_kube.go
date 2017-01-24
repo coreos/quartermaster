@@ -18,7 +18,9 @@ import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/api"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	kubestorage "k8s.io/kubernetes/pkg/apis/storage"
 )
 
 const (
@@ -186,4 +188,58 @@ func (st *GlusterStorage) makeGlusterFSDeploymentSpec(s *spec.StorageNode) (*ext
 		},
 	}
 	return spec, nil
+}
+
+// Deploy a *single* StorageClass for all GlusterFS clusters in this
+// namespace.  Even if there many GlusterFS clusters in a single namespace,
+// Heketi takes care of getting a volume from any of them.  Therefore,
+// there is a StorageClass per Heketi instance.
+func (st *GlusterStorage) deployStorageClass(namespace string) error {
+
+	/*
+		// TODO(lpabon): Change to use this when getHeketiAddress()
+		// is fixed
+		heketiAddress, err := st.getHeketiAddress(namespace)
+		if err != nil {
+			return err
+		}
+	*/
+
+	// TODO(lpabon): remove with the above
+	service, err := st.client.Core().Services(namespace).Get("heketi")
+	if err != nil {
+		return logger.LogError("error accessing heketi service: %v", err)
+	}
+
+	// Create a name for the storageclass for this namespace
+	scname := "gluster.qm." + namespace
+
+	// Create storage class
+	storageclass := &kubestorage.StorageClass{
+		ObjectMeta: api.ObjectMeta{
+			Name:      scname,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"quartermaster": scname,
+				"name":          scname,
+			},
+		},
+		Provisioner: "kubernetes.io/glusterfs",
+		Parameters: map[string]string{
+			"resturl": "http://" + service.Spec.ClusterIP + ":8080",
+		},
+	}
+
+	// Register storage class
+	storageclasses := st.client.Storage().StorageClasses()
+	_, err = storageclasses.Create(storageclass)
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	} else if err != nil {
+		logger.Err(err)
+	}
+
+	logger.Info("StorageClass registered. Ready for provisioning")
+
+	return nil
 }

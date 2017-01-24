@@ -16,7 +16,6 @@ package glusterfs
 
 import (
 	"sort"
-	"strings"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/operator"
@@ -117,7 +116,15 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 
 func (st *GlusterStorage) UpdateCluster(old *spec.StorageCluster,
 	new *spec.StorageCluster) error {
-	logger.Debug("update cluster %v", old.Name)
+
+	// If we are in Ready state, submit a StorageClass
+	if new.Status.Ready {
+		err := st.deployStorageClass(new.GetNamespace())
+		if err != nil {
+			return logger.LogError("Unable to deploy StorageClass: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -161,7 +168,7 @@ func (st *GlusterStorage) MakeDeployment(c *spec.StorageCluster,
 
 func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
 
-	// Update cluster
+	// Get cluster client
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
 	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
 	if err != nil {
@@ -261,6 +268,31 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 		}
 	}
 
+	// If the cluster is still not ready, check if we now have enough nodes to
+	// start the cluster.  Updating the cluster will cause it to submit a StorageClass
+	if !cluster.Status.Ready {
+		clusterInfo, err := h.ClusterInfo(cluster.Spec.GlusterFS.Cluster)
+		if err != nil {
+			return nil, logger.LogError("Unable to get cluster information: %v", err)
+		}
+
+		// At least 3 nodes must be added
+		if len(clusterInfo.Nodes) >= 3 {
+			cluster.Status.Ready = true
+
+			// Update cluster
+			clusters := qmclient.NewStorageClusters(st.qm, cluster.GetNamespace())
+			_, err = clusters.Update(cluster)
+			if err != nil {
+				return nil, logger.LogError("Unable to update cluster %v/%v: %v",
+					cluster.GetNamespace(), cluster.GetName(), err)
+			}
+			logger.Info("Updated cluster %v/%v to Ready state",
+				cluster.GetNamespace(), cluster.GetName())
+		}
+
+	}
+
 	return s, nil
 }
 
@@ -308,9 +340,4 @@ func (st *GlusterStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus
 
 func (st *GlusterStorage) Type() spec.StorageTypeIdentifier {
 	return spec.StorageTypeIdentifierGlusterFS
-}
-
-func dashifyPath(s string) string {
-	s = strings.TrimLeft(s, "/")
-	return strings.Replace(s, "/", "-", -1)
 }
