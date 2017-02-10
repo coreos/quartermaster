@@ -32,9 +32,8 @@ type StorageHandlerFuncs struct {
 	UpdateNodeFunc     func(n *spec.StorageNode) (*spec.StorageNode, error)
 	DeleteNodeFunc     func(n *spec.StorageNode) error
 
-	InitFunc      func() error
-	GetStatusFunc func(c *spec.StorageCluster) (*spec.StorageStatus, error)
-	TypeFunc      func() spec.StorageTypeIdentifier
+	InitFunc func() error
+	TypeFunc func() spec.StorageTypeIdentifier
 }
 
 func (s StorageHandlerFuncs) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
@@ -93,13 +92,6 @@ func (s StorageHandlerFuncs) Init() error {
 		return s.InitFunc()
 	}
 	return nil
-}
-
-func (s StorageHandlerFuncs) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
-	if s.GetStatusFunc != nil {
-		return s.GetStatusFunc(c)
-	}
-	return nil, nil
 }
 
 func (s StorageHandlerFuncs) Type() spec.StorageTypeIdentifier {

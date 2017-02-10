@@ -161,15 +161,6 @@ type NFSStorageNode struct {
 	NoRootSquash bool `json:"noRootSquash"` // Disable root squashing, mapping UID 0 in the client to UID 0 on the host.
 }
 
-// StorageStatus reports on the status of a storage deployment backend.
-type StorageStatus struct {
-	// TODO(lpabon): This may be removed and replaced by StorageClusterStatus
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
-	Details              map[string]string      `json:"details,omitempty"`
-	ClusterStatuses      []StorageClusterStatus `json:"clusterStatuses,omitempty"`
-}
-
 type StatusCondition struct {
 	Time    unversioned.Time `json:"time,omitempty"`
 	Message string           `json:"message,omitempty"`

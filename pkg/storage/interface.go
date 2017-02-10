@@ -51,7 +51,6 @@ type StorageType interface {
 	StorageNodeInterface
 
 	Init() error
-	GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error)
 
 	// Must be supplied
 	Type() spec.StorageTypeIdentifier
