@@ -19,7 +19,6 @@ import (
 	"reflect"
 	"testing"
 
-	//qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/operator"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
@@ -242,7 +241,7 @@ func TestGlusterFSMakeDeployment(t *testing.T) {
 
 	// Get a deployment.No old deployment
 	// image is provided
-	deploy, err := op.MakeDeployment(&spec.StorageCluster{}, n, nil)
+	deploy, err := op.MakeDeployment(n, nil)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, deploy != nil)
 
@@ -358,7 +357,7 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 	tests.Assert(t, err == nil)
 
 	// Add the node without initializing the cluster
-	retn, err := op.AddNode(c, n)
+	retn, err := op.AddNode(n)
 	tests.Assert(t, err != nil)
 	tests.Assert(t, retn == nil)
 
@@ -370,7 +369,7 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 	tests.Assert(t, len(retc.Spec.GlusterFS.Cluster) != 0)
 
 	// Add node .. missing glusterfs information
-	retn, err = op.AddNode(c, n)
+	retn, err = op.AddNode(n)
 	tests.Assert(t, err != nil)
 	tests.Assert(t, retn == nil)
 
@@ -379,7 +378,7 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 		Zone: 1,
 	}
 
-	retn, err = op.AddNode(c, n)
+	retn, err = op.AddNode(n)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retn != nil)
 
@@ -493,7 +492,7 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 	tests.Assert(t, retc != nil)
 
 	// Add node
-	retn, err := op.AddNode(c, n)
+	retn, err := op.AddNode(n)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retn != nil)
 
@@ -624,7 +623,7 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 	tests.Assert(t, retc != nil)
 
 	// Add node
-	retn, err := op.AddNode(c, n)
+	retn, err := op.AddNode(n)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retn != nil)
 
@@ -650,7 +649,7 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 	retn.Spec.Devices = append(retn.Spec.Devices, "/dev/added")
 
 	// Add new device to node
-	retn, err = op.AddNode(c, retn)
+	retn, err = op.AddNode(retn)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retn != nil)
 

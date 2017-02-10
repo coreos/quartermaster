@@ -55,8 +55,7 @@ func (st *NfsStorage) Init() error {
 	return nil
 }
 
-func (st *NfsStorage) MakeDeployment(c *spec.StorageCluster,
-	s *spec.StorageNode,
+func (st *NfsStorage) MakeDeployment(s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
 
 	if s.Spec.Image == "" {
@@ -168,7 +167,7 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 	return spec, nil
 }
 
-func (st *NfsStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *NfsStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
 
 	// Update status of node and cluster
@@ -194,7 +193,7 @@ func (st *NfsStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spe
 	return s, nil
 }
 
-func (st *NfsStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *NfsStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
 	return nil, nil
 }

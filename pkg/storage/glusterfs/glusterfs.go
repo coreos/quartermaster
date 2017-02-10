@@ -133,8 +133,7 @@ func (st *GlusterStorage) DeleteCluster(c *spec.StorageCluster) error {
 	return nil
 }
 
-func (st *GlusterStorage) MakeDeployment(c *spec.StorageCluster,
-	s *spec.StorageNode,
+func (st *GlusterStorage) MakeDeployment(s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
 
 	// TODO(lpabon): Make this required
@@ -166,7 +165,7 @@ func (st *GlusterStorage) MakeDeployment(c *spec.StorageCluster,
 	return deployment, nil
 }
 
-func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *GlusterStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 
 	// Get cluster client
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
@@ -296,7 +295,7 @@ func (st *GlusterStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (
 	return s, nil
 }
 
-func (st *GlusterStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *GlusterStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug("update node storagenode %v", s.Name)
 	return nil, nil
 }

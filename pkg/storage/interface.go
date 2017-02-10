@@ -28,11 +28,9 @@ type StorageClusterInterface interface {
 }
 
 type StorageNodeInterface interface {
-	MakeDeployment(c *spec.StorageCluster,
-		s *spec.StorageNode,
-		old *extensions.Deployment) (*extensions.Deployment, error)
-	AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
-	UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error)
+	MakeDeployment(s *spec.StorageNode, old *extensions.Deployment) (*extensions.Deployment, error)
+	AddNode(s *spec.StorageNode) (*spec.StorageNode, error)
+	UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error)
 	DeleteNode(s *spec.StorageNode) error
 }
 
