@@ -27,12 +27,10 @@ type StorageHandlerFuncs struct {
 	UpdateClusterFunc func(old *spec.StorageCluster, new *spec.StorageCluster) error
 	DeleteClusterFunc func(c *spec.StorageCluster) error
 
-	MakeDeploymentFunc func(c *spec.StorageCluster,
-		n *spec.StorageNode,
-		old *extensions.Deployment) (*extensions.Deployment, error)
-	AddNodeFunc    func(c *spec.StorageCluster, n *spec.StorageNode) (*spec.StorageNode, error)
-	UpdateNodeFunc func(c *spec.StorageCluster, n *spec.StorageNode) (*spec.StorageNode, error)
-	DeleteNodeFunc func(n *spec.StorageNode) error
+	MakeDeploymentFunc func(n *spec.StorageNode, old *extensions.Deployment) (*extensions.Deployment, error)
+	AddNodeFunc        func(n *spec.StorageNode) (*spec.StorageNode, error)
+	UpdateNodeFunc     func(n *spec.StorageNode) (*spec.StorageNode, error)
+	DeleteNodeFunc     func(n *spec.StorageNode) error
 
 	InitFunc      func() error
 	GetStatusFunc func(c *spec.StorageCluster) (*spec.StorageStatus, error)
@@ -61,27 +59,24 @@ func (s StorageHandlerFuncs) DeleteCluster(c *spec.StorageCluster) error {
 	return nil
 }
 
-func (s StorageHandlerFuncs) MakeDeployment(c *spec.StorageCluster,
-	n *spec.StorageNode,
+func (s StorageHandlerFuncs) MakeDeployment(n *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
 	if s.MakeDeploymentFunc != nil {
-		return s.MakeDeploymentFunc(c, n, old)
+		return s.MakeDeploymentFunc(n, old)
 	}
 	return nil, nil
 }
 
-func (s StorageHandlerFuncs) AddNode(c *spec.StorageCluster,
-	n *spec.StorageNode) (*spec.StorageNode, error) {
+func (s StorageHandlerFuncs) AddNode(n *spec.StorageNode) (*spec.StorageNode, error) {
 	if s.AddNodeFunc != nil {
-		return s.AddNodeFunc(c, n)
+		return s.AddNodeFunc(n)
 	}
 	return nil, nil
 }
 
-func (s StorageHandlerFuncs) UpdateNode(c *spec.StorageCluster,
-	n *spec.StorageNode) (*spec.StorageNode, error) {
+func (s StorageHandlerFuncs) UpdateNode(n *spec.StorageNode) (*spec.StorageNode, error) {
 	if s.UpdateNodeFunc != nil {
-		return s.UpdateNodeFunc(c, n)
+		return s.UpdateNodeFunc(n)
 	}
 	return nil, nil
 }

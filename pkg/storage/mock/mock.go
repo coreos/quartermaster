@@ -86,8 +86,7 @@ func (st *MockStorage) DeleteCluster(c *spec.StorageCluster) error {
 	return nil
 }
 
-func (st *MockStorage) MakeDeployment(c *spec.StorageCluster,
-	s *spec.StorageNode,
+func (st *MockStorage) MakeDeployment(s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
 	logger.Debug().Log("msg", "make deployment", "node", s.Name)
 
@@ -166,12 +165,12 @@ func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Depl
 	return spec, nil
 }
 
-func (st *MockStorage) AddNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *MockStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
 	return nil, nil
 }
 
-func (st *MockStorage) UpdateNode(c *spec.StorageCluster, s *spec.StorageNode) (*spec.StorageNode, error) {
+func (st *MockStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
 	return nil, nil
 }

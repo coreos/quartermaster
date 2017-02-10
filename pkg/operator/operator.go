@@ -291,9 +291,6 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 }
 
 func (c *Operator) reconcile(s *spec.StorageNode) error {
-	// TODO(lpabon): Remove this.
-	clusterSpec := &spec.StorageCluster{}
-
 	key, err := keyFunc(s)
 	if err != nil {
 		c.logger.Log("err", err)
@@ -368,7 +365,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	if !exists {
 
 		// Get a deployment from plugin
-		ds, err := storage.MakeDeployment(clusterSpec, s, nil)
+		ds, err := storage.MakeDeployment(s, nil)
 		if err != nil {
 			c.logger.Log("err", err)
 			return err
@@ -389,7 +386,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		}
 
 		// Add node
-		updated, err := storage.AddNode(clusterSpec, s)
+		updated, err := storage.AddNode(s)
 		if err != nil {
 			c.logger.Log("err", err)
 			return err
@@ -406,9 +403,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		}
 	} else {
 		// Update
-		ds, err := storage.MakeDeployment(clusterSpec,
-			s,
-			obj.(*extensions.Deployment))
+		ds, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
 		if err != nil {
 			c.logger.Log("err", err)
 			return err
@@ -422,7 +417,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		}
 
 		// Update Node
-		_, err = storage.UpdateNode(clusterSpec, s)
+		_, err = storage.UpdateNode(s)
 		if err != nil {
 			c.logger.Log("err", err)
 			return err
