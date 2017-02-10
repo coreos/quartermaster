@@ -10,7 +10,7 @@ import:
   - pkg/heketitest
   - pkg/glusterfs/api
 - package: k8s.io/kubernetes
-  version: v1.5.1
+  version: v1.5.2
   subpackages:
   - pkg/api
   - pkg/api/errors
