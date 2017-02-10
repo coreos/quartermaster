@@ -59,7 +59,6 @@ func New(client clientset.Interface, qm restclient.Interface) (qmstorage.Storage
 		AddNodeFunc:        s.AddNode,
 		UpdateNodeFunc:     s.UpdateNode,
 		DeleteNodeFunc:     s.DeleteNode,
-		GetStatusFunc:      s.GetStatus,
 	}, nil
 }
 
@@ -329,12 +328,6 @@ func (st *GlusterStorage) DeleteNode(s *spec.StorageNode) error {
 
 	// Delete node
 	return h.NodeDelete(s.Spec.GlusterFS.Node)
-}
-
-func (st *GlusterStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
-	logger.Debug("status")
-	status := &spec.StorageStatus{}
-	return status, nil
 }
 
 func (st *GlusterStorage) Type() spec.StorageTypeIdentifier {

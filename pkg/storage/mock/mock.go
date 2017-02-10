@@ -56,7 +56,6 @@ func New(client clientset.Interface, qm restclient.Interface) (qmstorage.Storage
 		AddNodeFunc:        s.AddNode,
 		UpdateNodeFunc:     s.UpdateNode,
 		DeleteNodeFunc:     s.DeleteNode,
-		GetStatusFunc:      s.GetStatus,
 	}, nil
 }
 
@@ -178,12 +177,6 @@ func (st *MockStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error
 func (st *MockStorage) DeleteNode(s *spec.StorageNode) error {
 	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
 	return nil
-}
-
-func (st *MockStorage) GetStatus(c *spec.StorageCluster) (*spec.StorageStatus, error) {
-	logger.Debug().Log("msg", "status", "cluster", c.Name)
-	status := &spec.StorageStatus{}
-	return status, nil
 }
 
 func (st *MockStorage) Type() spec.StorageTypeIdentifier {
