@@ -77,11 +77,11 @@ func (c *Operator) createTPRs() error {
 	for _, tpr := range tprs {
 		_, err := tprClient.Create(tpr)
 		if apierrors.IsAlreadyExists(err) {
-			c.logger.Log("msg", "TPR already registered", "tpr", tpr.Name)
+			logger.Debug("%v already registered", tpr.GetName())
 		} else if err != nil {
 			return err
 		} else {
-			c.logger.Log("msg", "TPR created", "tpr", tpr.Name)
+			logger.Info("%v TPR created", tpr.GetName())
 		}
 	}
 

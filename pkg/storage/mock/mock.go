@@ -15,14 +15,9 @@
 package mock
 
 import (
-	"os"
-	"strings"
-
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
-
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/levels"
+	"github.com/coreos-inc/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -31,13 +26,8 @@ import (
 )
 
 var (
-	logger levels.Levels
+	logger = utils.NewLogger("mock", utils.LEVEL_DEBUG)
 )
-
-func init() {
-	logger = levels.New(log.NewContext(log.NewLogfmtLogger(os.Stdout)).
-		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
-}
 
 func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
 	s := &MockStorage{
@@ -65,30 +55,30 @@ type MockStorage struct {
 }
 
 func (st *MockStorage) Init() error {
-	logger.Debug().Log("msg", "init")
+	logger.Debug("called")
 	return nil
 }
 
 func (st *MockStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
-	logger.Debug().Log("msg", "add cluster", "cluster", c.Name)
+	logger.Debug("called")
 	return nil, nil
 }
 
 func (st *MockStorage) UpdateCluster(old *spec.StorageCluster,
 	new *spec.StorageCluster) error {
-	logger.Debug().Log("msg", "update", "cluster", old.Name)
+	logger.Debug("called")
 	return nil
 }
 
 func (st *MockStorage) DeleteCluster(c *spec.StorageCluster) error {
-	logger.Debug().Log("msg", "delete", "cluster", c.Name)
+	logger.Debug("called")
 	return nil
 }
 
 func (st *MockStorage) MakeDeployment(s *spec.StorageNode,
 	old *extensions.Deployment) (*extensions.Deployment, error) {
-	logger.Debug().Log("msg", "make deployment", "node", s.Name)
 
+	logger.Debug("Make deployment for node %v", s.GetName())
 	if s.Spec.Image == "" {
 		s.Spec.Image = "nginx"
 	}
@@ -117,24 +107,6 @@ func (st *MockStorage) MakeDeployment(s *spec.StorageNode,
 }
 
 func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
-	var volumes []api.Volume
-	var mounts []api.VolumeMount
-
-	for _, path := range s.Spec.Directories {
-		dash := dashifyPath(path)
-		volumes = append(volumes, api.Volume{
-			Name: dash,
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
-					Path: path,
-				},
-			},
-		})
-		mounts = append(mounts, api.VolumeMount{
-			Name:      dash,
-			MountPath: path,
-		})
-	}
 
 	spec := &extensions.DeploymentSpec{
 		Replicas: 1,
@@ -154,10 +126,8 @@ func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Depl
 						Name:            s.Name,
 						Image:           s.Spec.Image,
 						ImagePullPolicy: api.PullIfNotPresent,
-						VolumeMounts:    mounts,
 					},
 				},
-				Volumes: volumes,
 			},
 		},
 	}
@@ -165,25 +135,20 @@ func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Depl
 }
 
 func (st *MockStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
+	logger.Debug("called")
 	return nil, nil
 }
 
 func (st *MockStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
+	logger.Debug("called")
 	return nil, nil
 }
 
 func (st *MockStorage) DeleteNode(s *spec.StorageNode) error {
-	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
+	logger.Debug("called")
 	return nil
 }
 
 func (st *MockStorage) Type() spec.StorageTypeIdentifier {
 	return spec.StorageTypeIdentifierMock
-}
-
-func dashifyPath(s string) string {
-	s = strings.TrimLeft(s, "/")
-	return strings.Replace(s, "/", "-", -1)
 }
