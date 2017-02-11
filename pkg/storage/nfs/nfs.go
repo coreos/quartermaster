@@ -1,16 +1,27 @@
+// Copyright 2017 The quartermaster Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package nfs
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
-
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/levels"
+	"github.com/coreos-inc/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -19,17 +30,12 @@ import (
 )
 
 var (
-	logger levels.Levels
+	logger = utils.NewLogger("nfs", utils.LEVEL_DEBUG)
 )
 
 type NfsStorage struct {
 	client clientset.Interface
 	qm     restclient.Interface
-}
-
-func init() {
-	logger = levels.New(log.NewContext(log.NewLogfmtLogger(os.Stdout)).
-		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller))
 }
 
 func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
@@ -167,7 +173,7 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 }
 
 func (st *NfsStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug().Log("msg", "add node", "storagenode", s.Name)
+	logger.Debug("add node %v", s.GetName())
 
 	// Update status of node and cluster
 	s.Status.Ready = true
@@ -178,7 +184,7 @@ func (st *NfsStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
 	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
 	if err != nil {
-		return nil, logger.Error().Log("err", err)
+		return nil, logger.Err(err)
 	}
 
 	cluster.Status.Ready = true
@@ -186,19 +192,19 @@ func (st *NfsStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	cluster.Status.Reason = "Success"
 	_, err = clusters.Update(cluster)
 	if err != nil {
-		return nil, logger.Error().Log("err", err)
+		return nil, logger.Err(err)
 	}
 
 	return s, nil
 }
 
 func (st *NfsStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug().Log("msg", "update node", "storagenode", s.Name)
+	logger.Debug("Update node %v", s.GetName())
 	return nil, nil
 }
 
 func (st *NfsStorage) DeleteNode(s *spec.StorageNode) error {
-	logger.Debug().Log("msg", "delete node", "storagenode", s.Name)
+	logger.Debug("Delete node %v", s.GetName())
 	return nil
 }
 

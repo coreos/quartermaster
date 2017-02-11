@@ -1,4 +1,4 @@
-// Copyright 2016 The quartermaster Authors
+// Copyright 2017 The quartermaster Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,16 +15,13 @@
 package operator
 
 import (
-	"fmt"
 	"net/url"
-	"os"
 	"time"
 
 	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
 	"github.com/coreos-inc/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
-
-	"github.com/go-kit/kit/log"
+	"github.com/coreos-inc/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
@@ -37,22 +34,19 @@ import (
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
-// Operator manages lify cycle of Prometheus deployments and
-// monitoring configurations.
+var (
+	logger = utils.NewLogger("operator", utils.LEVEL_DEBUG)
+)
+
 type Operator struct {
-	kclient *clientset.Clientset
-	rclient *restclient.RESTClient
-	logger  log.Logger
-
+	kclient        *clientset.Clientset
+	rclient        *restclient.RESTClient
 	storageSystems map[spec.StorageTypeIdentifier]qmstorage.StorageType
-
-	nodeInf   cache.SharedIndexInformer
-	dsetInf   cache.SharedIndexInformer
-	clusterOp StorageOperator
-
-	queue *queue
-
-	host string
+	nodeInf        cache.SharedIndexInformer
+	dsetInf        cache.SharedIndexInformer
+	clusterOp      StorageOperator
+	queue          *queue
+	host           string
 }
 
 // Config defines configuration parameters for the Operator.
@@ -72,8 +66,6 @@ func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, erro
 	if err != nil {
 		return nil, err
 	}
-	logger := log.NewContext(log.NewLogfmtLogger(os.Stdout)).
-		With("ts", log.DefaultTimestampUTC, "caller", log.DefaultCaller)
 
 	rclient, err := NewQuartermasterRESTClient(*cfg)
 	if err != nil {
@@ -93,13 +85,12 @@ func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, erro
 		// Save object
 		storageSystems[st.Type()] = st
 
-		logger.Log("msg", "storage driver loaded", "type", st.Type())
+		logger.Info("storage driver %v loaded", st.Type())
 	}
 
 	return &Operator{
 		kclient:        client,
 		rclient:        rclient,
-		logger:         logger,
 		queue:          newQueue(200),
 		host:           cfg.Host,
 		storageSystems: storageSystems,
@@ -110,7 +101,7 @@ func (c *Operator) GetStorage(name spec.StorageTypeIdentifier) (qmstorage.Storag
 	if storage, ok := c.storageSystems[name]; ok {
 		return storage, nil
 	} else {
-		return nil, c.logger.Log("invalid storage type", name)
+		return nil, logger.LogError("invalid storage type: %v", name)
 	}
 }
 
@@ -124,13 +115,13 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	// Test communication with server
 	v, err := c.kclient.Discovery().ServerVersion()
 	if err != nil {
-		return fmt.Errorf("communicating with server failed: %s", err)
+		return logger.LogError("communicating with server failed: %s", err)
 	}
-	c.logger.Log("msg", "connection established", "cluster-version", v)
+	logger.Info("connection to Kubernetes established. Cluster version %v", v)
 
 	// Create ThirdPartyResources
 	if err := c.createTPRs(); err != nil {
-		return c.logger.Log("msg", "unable to create tpr", "err", err)
+		return logger.LogError("Unable to create TPR: %v", err)
 	}
 
 	// Create notification objects
@@ -142,32 +133,32 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 		&extensions.Deployment{}, resyncPeriod, cache.Indexers{})
 
 	// Register Handlers
-	c.logger.Log("msg", "Register event handlers")
+	logger.Debug("register event handlers")
 	c.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(p interface{}) {
-			c.logger.Log("msg", "enqueueStorageNode", "trigger", "storagenode add")
+			logger.Debug("enqueueStorageNode trigger for storage add")
 			c.enqueueStorageNode(p)
 		},
 		DeleteFunc: func(p interface{}) {
-			c.logger.Log("msg", "enqueueStorageNode", "trigger", "storagenode del")
+			logger.Debug("enqueueStorageNode trigger for storage del")
 			c.enqueueStorageNode(p)
 		},
 		UpdateFunc: func(_, p interface{}) {
-			c.logger.Log("msg", "enqueueStorageNode", "trigger", "storagenode update")
+			logger.Debug("enqueueStorageNode trigger for storage update")
 			c.enqueueStorageNode(p)
 		},
 	})
 	c.dsetInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(d interface{}) {
-			c.logger.Log("msg", "addDeployment", "trigger", "deployment add")
+			logger.Debug("addDeployment trigger for deployment add")
 			c.addDeployment(d)
 		},
 		DeleteFunc: func(d interface{}) {
-			c.logger.Log("msg", "deleteDeployment", "trigger", "deployment delete")
+			logger.Debug("addDeployment trigger for deployment delete")
 			c.deleteDeployment(d)
 		},
 		UpdateFunc: func(old, cur interface{}) {
-			c.logger.Log("msg", "updateDeployment", "trigger", "deployment update")
+			logger.Debug("addDeployment trigger for deployment update")
 			c.updateDeployment(old, cur)
 		},
 	})
@@ -181,13 +172,13 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 	go c.dsetInf.Run(stopc)
 
 	// Wait until event handlers are ready
-	c.logger.Log("msg", "Waiting for sync")
+	logger.Info("Waiting for synchronization with Kubernetes TPR")
 	for !c.nodeInf.HasSynced() ||
 		!c.dsetInf.HasSynced() ||
 		!c.clusterOp.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
 	}
-	c.logger.Log("msg", "Sync done")
+	logger.Info("Synchronization complete")
 
 	<-stopc
 	return nil
@@ -238,7 +229,7 @@ func (c *Operator) worker() {
 			return
 		}
 		if err := c.reconcile(p); err != nil {
-			utilruntime.HandleError(fmt.Errorf("reconciliation failed: %s", err))
+			utilruntime.HandleError(logger.LogError("reconciliation failed: %v", err))
 		}
 	}
 }
@@ -246,13 +237,14 @@ func (c *Operator) worker() {
 func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
 	key, err := keyFunc(d)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("creating key: %s", err))
+		utilruntime.HandleError(logger.LogError("error creating key: %v", err))
 		return nil
 	}
-	// Namespace/Name are one-to-one so the key will find the respective Prometheus resource.
+
+	// Namespace/Name are one-to-one so the key will find the respective StorageNode resource.
 	s, exists, err := c.nodeInf.GetStore().GetByKey(key)
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("get Prometheus resource: %s", err))
+		utilruntime.HandleError(logger.LogError("error getting storage node resource: %v", err))
 		return nil
 	}
 	if !exists {
@@ -293,49 +285,34 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 func (c *Operator) reconcile(s *spec.StorageNode) error {
 	key, err := keyFunc(s)
 	if err != nil {
-		c.logger.Log("err", err)
-		return err
+		return logger.Err(err)
 	}
 
 	// Get plugin
 	storage, err := c.GetStorage(s.Spec.Type)
 	if err != nil {
-		c.logger.Log("err", err)
-		return err
+		return logger.Err(err)
 	}
 
 	obj, exists, err := c.nodeInf.GetStore().GetByKey(key)
 	if err != nil {
-		c.logger.Log("err", err)
-		return err
+		return logger.Err(err)
 	}
 
 	if !exists {
-		// TODO(fabxc): we want to do server side deletion due to the variety of
-		// resources we create.
-		// Doing so just based on the deletion event is not reliable, so
-		// we have to garbage collect the controller-created resources in some other way.
-		//
-		// Let's rely on the index key matching that of the created configmap and replica
-		// set for now. This does not work if we delete Prometheus resources as the
-		// controller is not running – that could be solved via garbage collection later.
-
 		err := storage.DeleteNode(s)
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
 		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.kclient)
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
 		err = reaper.Stop(s.Namespace, s.Name, time.Minute, api.NewDeleteOptions(0))
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
 		return nil
@@ -347,49 +324,46 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	// DeepCopy CS
 	s, err = storageNodeDeepCopy(s)
 	if err != nil {
-		c.logger.Log("err", err)
 		return err
 	}
 
-	dsetClient := c.kclient.Extensions().Deployments(s.Namespace)
-	// Ensure we have a replica set running Prometheus deployed.
-	// XXX: Selecting by ObjectMeta.Name gives an error. So use the label for now.
+	deployClient := c.kclient.Extensions().Deployments(s.Namespace)
 	deployment := &extensions.Deployment{}
 	deployment.Namespace = s.Namespace
 	deployment.Name = s.Name
 	obj, exists, err = c.dsetInf.GetStore().Get(deployment)
 	if err != nil {
-		return c.logger.Log("err", err)
+		return logger.Err(err)
 	}
 
 	if !exists {
 
 		// Get a deployment from plugin
-		ds, err := storage.MakeDeployment(s, nil)
+		deploy, err := storage.MakeDeployment(s, nil)
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
-		if _, err := dsetClient.Create(ds); err != nil {
+		if _, err := deployClient.Create(deploy); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
-				c.logger.Log("msg", "unable to create deployment", "err", err)
-				return err
+				return logger.LogError("unable to create deployment %v: %v",
+					deploy.GetName(), err)
 			}
 		}
 
 		// Wait until it is ready
-		err = WaitForDeploymentReady(c.kclient, s.GetNamespace(), s.GetName(), ds.Spec.Replicas)
+		err = WaitForDeploymentReady(c.kclient,
+			s.GetNamespace(),
+			s.GetName(),
+			deploy.Spec.Replicas)
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
 		// Add node
 		updated, err := storage.AddNode(s)
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
 		// Update node object
@@ -397,39 +371,34 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
 			_, err = storagenodes.Update(updated)
 			if err != nil {
-				c.logger.Log("err", err)
-				return err
+				return logger.Err(err)
 			}
 		}
 	} else {
 		// Update
-		ds, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
+		deploy, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 
 		// TODO(barakmich): This may be broken for DaemonSets.
 		// Will be fixed when DaemonSets do rolling updates.
-		if _, err := dsetClient.Update(ds); err != nil {
-			c.logger.Log("err", err)
-			return err
+		if _, err := deployClient.Update(deploy); err != nil {
+			return logger.Err(err)
 		}
 
 		// Update Node
 		_, err = storage.UpdateNode(s)
 		if err != nil {
-			c.logger.Log("err", err)
-			return err
+			return logger.Err(err)
 		}
 	}
 
 	return nil
 }
 
-func (c *Operator) updateStatus() error {
-	// TODO(barakmich): Call into c.storage.GetStatus()
-	return nil
+func (c *Operator) GetRESTClient() *restclient.RESTClient {
+	return c.rclient
 }
 
 func ListOptions(name string) api.ListOptions {
@@ -455,7 +424,7 @@ func newClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSCl
 		}
 		hostURL, err := url.Parse(host)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing host url %s : %v", host, err)
+			return nil, logger.LogError("error parsing host url %s : %v", host, err)
 		}
 		if hostURL.Scheme == "https" {
 			cfg.TLSClientConfig = *tlsConfig
@@ -475,7 +444,7 @@ func storageNodeDeepCopy(ns *spec.StorageNode) (*spec.StorageNode, error) {
 	}
 	copied, ok := objCopy.(*spec.StorageNode)
 	if !ok {
-		return nil, fmt.Errorf("expected StorageNode, got %#v", objCopy)
+		return nil, logger.LogError("expected StorageNode, got %#v", objCopy)
 	}
 	return copied, nil
 }
