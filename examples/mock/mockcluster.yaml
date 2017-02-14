@@ -1,19 +1,18 @@
 apiVersion: storage.coreos.com/v1alpha1
 kind: StorageCluster
 metadata:
-    name: mymockcluster
+    name: mock
 spec:
     type: mock
     storageNodes:
-        - nodeName: ip-10-0-0-167.us-west-2.compute.internal
-          directories:
+        - directories:
               - /export
-        - nodeName: ip-10-0-0-168.us-west-2.compute.internal
-          directories:
+        - directories:
               - /export
-        - nodeName: ip-10-0-0-169.us-west-2.compute.internal
-          directories:
-              - /export
-        - nodeName: ip-10-0-0-50.us-west-2.compute.internal
+          nodeSelector:
+              disktype: sata
+        - image: gcr.io/google_containers/pause:2.0
+          nodeSelector:
+              disktype: ssd
           directories:
               - /export

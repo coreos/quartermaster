@@ -351,29 +351,38 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			}
 		}
 
-		// Wait until it is ready
-		err = WaitForDeploymentReady(c.kclient,
-			s.GetNamespace(),
-			s.GetName(),
-			deploy.Spec.Replicas)
-		if err != nil {
-			return logger.Err(err)
-		}
+		// We can now spawn a new routine which will wait until
+		// the deployment is ready.
+		go func() {
 
-		// Add node
-		updated, err := storage.AddNode(s)
-		if err != nil {
-			return logger.Err(err)
-		}
-
-		// Update node object
-		if updated != nil {
-			storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
-			_, err = storagenodes.Update(updated)
+			// Wait until it is ready
+			err = WaitForDeploymentReady(c.kclient,
+				s.GetNamespace(),
+				s.GetName(),
+				deploy.Spec.Replicas)
 			if err != nil {
-				return logger.Err(err)
+				logger.Err(err)
+				return
 			}
-		}
+
+			// Add node
+			updated, err := storage.AddNode(s)
+			if err != nil {
+				logger.Err(err)
+				return
+			}
+
+			// Update node object
+			if updated != nil {
+				storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
+				_, err = storagenodes.Update(updated)
+				if err != nil {
+					logger.Err(err)
+					return
+				}
+			}
+		}()
+
 	} else {
 		// Update
 		deploy, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))

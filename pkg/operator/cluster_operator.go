@@ -254,7 +254,12 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) error {
 			},
 			Spec: ns,
 		}
-		node.Spec.Image = cs.Spec.Image
+		if len(ns.Image) != 0 {
+			node.Spec.Image = ns.Image
+		} else {
+			node.Spec.Image = cs.Spec.Image
+		}
+
 		node.Spec.ClusterRef = clusterRef
 		node.Spec.Type = cs.Spec.Type
 

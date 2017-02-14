@@ -29,23 +29,60 @@ var (
 	logger = utils.NewLogger("mock", utils.LEVEL_DEBUG)
 )
 
+// This mock storage system serves as an example driver for developers
 func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
 	s := &MockStorage{
 		client: client,
 		qm:     qm,
 	}
 
+	// Use the StorageHandlerFuncs struct to insulate
+	// the driver from interface incompabilities
 	return &qmstorage.StorageHandlerFuncs{
-		StorageHandler:     s,
-		TypeFunc:           s.Type,
-		InitFunc:           s.Init,
-		AddClusterFunc:     s.AddCluster,
-		UpdateClusterFunc:  s.UpdateCluster,
-		DeleteClusterFunc:  s.DeleteCluster,
+
+		// Save the storage handler.  Great for unit tests
+		StorageHandler: s,
+
+		// Provide a function which returns the Type of storage system
+		// Required
+		TypeFunc: s.Type,
+
+		// This function is called when QM is started
+		// Optional
+		InitFunc: s.Init,
+
+		// ---------------- Cluster Functions ---------------
+
+		// Called after a new StorageCluster object has been submitted
+		// QM takes care of creating StorageNodes for each one defined
+		// in the StorageCluster so there is no need for the driver to
+		// create them
+		AddClusterFunc: s.AddCluster,
+
+		// Called when the StorageCluster has been updated
+		UpdateClusterFunc: s.UpdateCluster,
+
+		// Called when the StorageCluster has been deleted. After this
+		// call, QM will delete all StorageNode objects.  You may want
+		// to wait until all your StorageNodes are deleted, but it all
+		// depends on your storage system
+		DeleteClusterFunc: s.DeleteCluster,
+
+		// ---------------- Node Functions ---------------
+
+		// Return a Deployment object which requests the installation
+		// of the containerized storage software.
 		MakeDeploymentFunc: s.MakeDeployment,
-		AddNodeFunc:        s.AddNode,
-		UpdateNodeFunc:     s.UpdateNode,
-		DeleteNodeFunc:     s.DeleteNode,
+
+		// New StorageNode is ready and it is called after the
+		// deployment is available and running.
+		AddNodeFunc: s.AddNode,
+
+		// Called when a StorageNode has been updated
+		UpdateNodeFunc: s.UpdateNode,
+
+		// Called when a StorageNode has been deleted
+		DeleteNodeFunc: s.DeleteNode,
 	}, nil
 }
 
@@ -60,18 +97,18 @@ func (st *MockStorage) Init() error {
 }
 
 func (st *MockStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
-	logger.Debug("called")
+	logger.Info("Add cluster %v", c.GetName())
 	return nil, nil
 }
 
 func (st *MockStorage) UpdateCluster(old *spec.StorageCluster,
 	new *spec.StorageCluster) error {
-	logger.Debug("called")
+	logger.Info("Updating cluster %v", old.GetName())
 	return nil
 }
 
 func (st *MockStorage) DeleteCluster(c *spec.StorageCluster) error {
-	logger.Debug("called")
+	logger.Info("Deleting cluster %v", c.GetName())
 	return nil
 }
 
@@ -80,6 +117,7 @@ func (st *MockStorage) MakeDeployment(s *spec.StorageNode,
 
 	logger.Debug("Make deployment for node %v", s.GetName())
 	if s.Spec.Image == "" {
+		// Use nginx as a 'mock' storage system container
 		s.Spec.Image = "nginx"
 	}
 	spec, err := st.makeDeploymentSpec(s)
@@ -114,7 +152,9 @@ func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Depl
 			ObjectMeta: api.ObjectMeta{
 				Labels: map[string]string{
 					"nfs-ganesha-node": s.Name,
-					"quartermaster":    s.Name,
+
+					// Drivers *should* add a quartermaster label
+					"quartermaster": s.Name,
 				},
 				Name: s.Name,
 			},
@@ -135,20 +175,22 @@ func (st *MockStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Depl
 }
 
 func (st *MockStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug("called")
+	logger.Info("Adding node %v", s.GetName())
 	return nil, nil
 }
 
 func (st *MockStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error) {
-	logger.Debug("called")
+	logger.Info("Updating storage node %v", s.GetName())
 	return nil, nil
 }
 
 func (st *MockStorage) DeleteNode(s *spec.StorageNode) error {
-	logger.Debug("called")
+	logger.Info("Deleting storage node %v", s.GetName())
 	return nil
 }
 
 func (st *MockStorage) Type() spec.StorageTypeIdentifier {
+
+	// This variable must be defined under the spec pkg
 	return spec.StorageTypeIdentifierMock
 }
