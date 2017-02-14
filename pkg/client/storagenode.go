@@ -22,12 +22,12 @@ import (
 )
 
 type StorageNodes struct {
-	t *Transport
+	t *transport
 }
 
-func NewStorageNodes(c *restclient.RESTClient, namespace string) *StorageNodes {
+func NewStorageNodes(c restclient.Interface, namespace string) *StorageNodes {
 	return &StorageNodes{
-		t: NewTransport(c, namespace, "storagenodes"),
+		t: newTransport(c, namespace, "storagenodes"),
 	}
 }
 

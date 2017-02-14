@@ -22,12 +22,12 @@ import (
 )
 
 type StorageClusters struct {
-	t *Transport
+	t *transport
 }
 
 func NewStorageClusters(c restclient.Interface, namespace string) *StorageClusters {
 	return &StorageClusters{
-		t: NewTransport(c, namespace, "storageclusters"),
+		t: newTransport(c, namespace, "storageclusters"),
 	}
 }
 

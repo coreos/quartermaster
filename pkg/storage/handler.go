@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package operator
+package storage
 
 import (
 	"github.com/coreos-inc/quartermaster/pkg/spec"
@@ -20,6 +20,8 @@ import (
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )
 
+// StorageHandlerFuncs insulates the implementation from unsupported
+// interface functions.  Please see StorageType for documentation
 type StorageHandlerFuncs struct {
 	StorageHandler interface{}
 

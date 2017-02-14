@@ -1,4 +1,4 @@
-// Copyright 2016 The quartermaster Authors
+// Copyright 2017 The quartermaster Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -11,6 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
+// This document contains all Quartermaster defined resources for Kubernetes
+// Sections with @DRIVER highlight Kubernetes resources where drivers can
+// add specific information
 
 package spec
 
@@ -32,6 +36,8 @@ type StorageNode struct {
 	Status StorageNodeStatus `json:"status,omitempty"`
 }
 
+// Third Party Resource object which contains all the necessary information
+// to deploy a storage cluster
 type StorageCluster struct {
 	unversioned.TypeMeta `json:",inline"`
 	api.ObjectMeta       `json:"metadata,omitempty"`
@@ -50,6 +56,7 @@ type StorageNodeList struct {
 	Items []StorageNode `json:"items"`
 }
 
+// StorageClusterList is a list of StorageCluster objects in Kubernetes
 type StorageClusterList struct {
 	unversioned.TypeMeta `json:",inline"`
 	unversioned.ListMeta `json:"metadata,omitempty"`
@@ -59,13 +66,17 @@ type StorageClusterList struct {
 
 type StorageTypeIdentifier string
 
+// Add here the storage type identifier for your driver
+// This is the storage type identifier administrators will use to identify
+// which storage system to deploy.
+// @DRIVER
 const (
 	StorageTypeIdentifierMock      StorageTypeIdentifier = "mock"
 	StorageTypeIdentifierNFS       StorageTypeIdentifier = "nfs"
 	StorageTypeIdentifierGlusterFS StorageTypeIdentifier = "glusterfs"
-	StorageTypeIdentifierTorus     StorageTypeIdentifier = "torus"
 )
 
+// Specification for a StorageCluster
 type StorageClusterSpec struct {
 	// Software defined storage type
 	Type StorageTypeIdentifier `json:"type,omitempty"`
@@ -79,6 +90,8 @@ type StorageClusterSpec struct {
 	StorageNodes []StorageNodeSpec `json:"storageNodes,omitempty"`
 
 	// Add storage specific section here
+	// @DRIVER
+
 	GlusterFS *GlusterStorageCluster `json:"glusterfs,omitempty"`
 }
 
@@ -124,8 +137,8 @@ type StorageNodeSpec struct {
 	ClusterRef *api.ObjectReference `json:"clusterRef,omitempty"`
 
 	// Storage system settings
+	// @DRIVER
 	GlusterFS *GlusterStorageNode `json:"glusterfs,omitempty"`
-	Torus     *TorusStorageNode   `json:"torus,omitempty"`
 	NFS       *NFSStorageNode     `json:"nfs,omitempty"`
 }
 
@@ -146,11 +159,6 @@ type GlusterStorageNode struct {
 	Cluster string `json:"cluster"` // Cluster ID this node should belong to.
 	Node    string `json:"node"`    // Node ID
 	Zone    int    `json:"zone"`    // Zone ID this node belongs to. If missing, Zone 1 will be assumed.
-}
-
-// TorusStorageNode defines the specifics of how this Gluster instance should be instantiated.
-type TorusStorageNode struct {
-	MonitorPort string `json:"monitorPort"`
 }
 
 // NFSStorageNode defines the specifics of how this Gluster instance should be instantiated.
@@ -205,6 +213,7 @@ type StorageClusterStatus struct {
 	NodeStatuses []StorageNodeStatus       `json:"nodeStatuses,omitempty"`
 
 	// Add storage specific status
+	// @DRIVER
 }
 
 type StorageNodeStatus struct {
@@ -215,4 +224,5 @@ type StorageNodeStatus struct {
 	NodeName   string                 `json:"nodeName,omitempty"`
 
 	// Add storage specific status
+	// @DRIVER
 }
