@@ -337,6 +337,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	}
 
 	if !exists {
+		// Check if the deployment exists
 
 		// Get a deployment from plugin
 		deploy, err := storage.MakeDeployment(s, nil)
@@ -351,40 +352,41 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			}
 		}
 
-		// We can now spawn a new routine which will wait until
-		// the deployment is ready.
-		go func() {
+	} else if !s.Status.Added {
+		// Check if the StorageNode has been added
 
-			// Wait until it is ready
-			err = WaitForDeploymentReady(c.kclient,
-				s.GetNamespace(),
-				s.GetName(),
-				deploy.Spec.Replicas)
+		// Check if the deployment is ready
+		deploy := obj.(*extensions.Deployment)
+		if deploy.Spec.Replicas != deploy.Status.AvailableReplicas {
+			return nil
+		}
+
+		// Add node
+		updated, err := storage.AddNode(s)
+		if err != nil {
+			return logger.Err(err)
+		}
+		s.Status.Added = true
+
+		// Update node object
+		storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
+		if updated != nil {
+			updated.Status.Added = true
+			_, err = storagenodes.Update(updated)
 			if err != nil {
-				logger.Err(err)
-				return
+				return logger.Err(err)
 			}
-
-			// Add node
-			updated, err := storage.AddNode(s)
+		} else {
+			_, err = storagenodes.Update(s)
 			if err != nil {
-				logger.Err(err)
-				return
+				return logger.Err(err)
 			}
 
-			// Update node object
-			if updated != nil {
-				storagenodes := qmclient.NewStorageNodes(c.rclient, s.GetNamespace())
-				_, err = storagenodes.Update(updated)
-				if err != nil {
-					logger.Err(err)
-					return
-				}
-			}
-		}()
+		}
 
 	} else {
-		// Update
+		// Update deployment and driver
+
 		deploy, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
 		if err != nil {
 			return logger.Err(err)

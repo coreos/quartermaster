@@ -209,6 +209,7 @@ type StorageClusterStatus struct {
 
 type StorageNodeStatus struct {
 	StatusInfo
+	Added      bool                   `json:"added,omitempty"`
 	Conditions []StorageNodeCondition `json:"conditions,omitempty"`
 	PodName    string                 `json:"podName,omitempty"`
 	NodeName   string                 `json:"nodeName,omitempty"`
