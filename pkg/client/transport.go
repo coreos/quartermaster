@@ -21,21 +21,21 @@ import (
 	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
-type Transport struct {
+type transport struct {
 	resource string
 	ns       string
 	client   restclient.Interface
 }
 
-func NewTransport(c restclient.Interface, namespace, resoure string) *Transport {
-	return &Transport{
+func newTransport(c restclient.Interface, namespace, resoure string) *transport {
+	return &transport{
 		client:   c,
 		ns:       namespace,
 		resource: resoure,
 	}
 }
 
-func (t *Transport) Create(in interface{}, resultObj interface{}) (result interface{}, err error) {
+func (t *transport) Create(in interface{}, resultObj interface{}) (result interface{}, err error) {
 	result = resultObj
 
 	req := t.client.Post().
@@ -52,7 +52,7 @@ func (t *Transport) Create(in interface{}, resultObj interface{}) (result interf
 	return
 }
 
-func (t *Transport) Update(in interface{},
+func (t *transport) Update(in interface{},
 	name string,
 	resultObj interface{}) (result interface{}, err error) {
 
@@ -72,7 +72,7 @@ func (t *Transport) Update(in interface{},
 	return
 }
 
-func (t *Transport) Delete(name string, options *api.DeleteOptions) error {
+func (t *transport) Delete(name string, options *api.DeleteOptions) error {
 	return t.client.Delete().
 		Namespace(t.ns).
 		Resource(t.resource).
@@ -82,7 +82,7 @@ func (t *Transport) Delete(name string, options *api.DeleteOptions) error {
 		Error()
 }
 
-func (t *Transport) Get(name string, resultObj interface{}) (result interface{}, err error) {
+func (t *transport) Get(name string, resultObj interface{}) (result interface{}, err error) {
 	result = resultObj
 	req := t.client.Get().
 		Namespace(t.ns).
@@ -98,7 +98,7 @@ func (t *Transport) Get(name string, resultObj interface{}) (result interface{},
 	return
 }
 
-func (t *Transport) List(resultObj interface{}) (result interface{}, err error) {
+func (t *transport) List(resultObj interface{}) (result interface{}, err error) {
 	result = resultObj
 	r := t.client.Get().
 		Namespace(t.ns).
