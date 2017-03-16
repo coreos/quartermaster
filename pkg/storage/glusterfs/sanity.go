@@ -15,7 +15,7 @@
 package glusterfs
 
 import (
-	"github.com/coreos-inc/quartermaster/pkg/spec"
+	"github.com/coreos/quartermaster/pkg/spec"
 )
 
 func IsGlusterFSStorageNodeUsable(s *spec.StorageNode) error {

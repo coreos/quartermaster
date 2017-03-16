@@ -15,7 +15,7 @@
 package storage
 
 import (
-	"github.com/coreos-inc/quartermaster/pkg/spec"
+	"github.com/coreos/quartermaster/pkg/spec"
 	"github.com/lpabon/godbc"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 )

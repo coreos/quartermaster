@@ -1,4 +1,4 @@
-package: github.com/coreos-inc/quartermaster
+package: github.com/coreos/quartermaster
 import:
 - package: github.com/heketi/heketi
   version: 9a70d23952f5acbb932ce45c91e3afe4325c2eb0
