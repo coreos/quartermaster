@@ -19,10 +19,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/coreos-inc/quartermaster/pkg/operator"
-	"github.com/coreos-inc/quartermaster/pkg/storage/glusterfs"
-	"github.com/coreos-inc/quartermaster/pkg/storage/mock"
-	"github.com/coreos-inc/quartermaster/pkg/storage/nfs"
+	"github.com/coreos/quartermaster/pkg/operator"
+	"github.com/coreos/quartermaster/pkg/storage/glusterfs"
+	"github.com/coreos/quartermaster/pkg/storage/mock"
+	"github.com/coreos/quartermaster/pkg/storage/nfs"
 )
 
 var (

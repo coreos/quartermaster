@@ -15,7 +15,7 @@
 package storage
 
 import (
-	"github.com/coreos-inc/quartermaster/pkg/spec"
+	"github.com/coreos/quartermaster/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"

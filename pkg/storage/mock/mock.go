@@ -15,9 +15,9 @@
 package mock
 
 import (
-	"github.com/coreos-inc/quartermaster/pkg/spec"
-	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
-	"github.com/coreos-inc/quartermaster/pkg/utils"
+	"github.com/coreos/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos/quartermaster/pkg/storage"
+	"github.com/coreos/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"

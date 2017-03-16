@@ -18,10 +18,10 @@ import (
 	"net/url"
 	"time"
 
-	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
-	"github.com/coreos-inc/quartermaster/pkg/spec"
-	qmstorage "github.com/coreos-inc/quartermaster/pkg/storage"
-	"github.com/coreos-inc/quartermaster/pkg/utils"
+	qmclient "github.com/coreos/quartermaster/pkg/client"
+	"github.com/coreos/quartermaster/pkg/spec"
+	qmstorage "github.com/coreos/quartermaster/pkg/storage"
+	"github.com/coreos/quartermaster/pkg/utils"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"

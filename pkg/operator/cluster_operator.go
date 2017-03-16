@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"hash/adler32"
 
-	qmclient "github.com/coreos-inc/quartermaster/pkg/client"
-	"github.com/coreos-inc/quartermaster/pkg/spec"
+	qmclient "github.com/coreos/quartermaster/pkg/client"
+	"github.com/coreos/quartermaster/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"

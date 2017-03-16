@@ -19,7 +19,7 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"github.com/coreos-inc/quartermaster/pkg/tests"
+	"github.com/coreos/quartermaster/pkg/tests"
 	"testing"
 	"time"
 )
