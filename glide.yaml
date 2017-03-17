@@ -7,6 +7,8 @@ import:
   - pkg/glusterfs/api
 - package: github.com/heketi/utils
   version: 435bc5bdfa64550e867cd7ef0b9181adc02b88d2
+- package: github.com/heketi/tests
+  version: f3775cbcefd6822086c729e3ce4b70ca85a5bd21
 - package: k8s.io/kubernetes
   version: v1.5.2
   subpackages:
