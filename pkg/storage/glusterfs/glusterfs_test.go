@@ -15,6 +15,10 @@
 package glusterfs
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 	"testing"
@@ -22,7 +26,7 @@ import (
 	"github.com/coreos/quartermaster/pkg/operator"
 	"github.com/coreos/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos/quartermaster/pkg/storage"
-	"github.com/coreos/quartermaster/pkg/tests"
+	"github.com/heketi/tests"
 	"github.com/heketi/utils"
 
 	heketiclient "github.com/heketi/heketi/client/api/go-client"
@@ -39,6 +43,14 @@ import (
 
 func init() {
 	logger.SetLevel(utils.LEVEL_NOLOG)
+}
+
+func objectToJSONBody(object interface{}) (io.ReadCloser, error) {
+	j, err := json.Marshal(object)
+	if err != nil {
+		return nil, err
+	}
+	return ioutil.NopCloser(bytes.NewReader(j)), nil
 }
 
 func getGlusterStorageFromStorageOperator(o qmstorage.StorageType) *GlusterStorage {
@@ -336,7 +348,7 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 						StatusCode: http.StatusOK,
 					}
 
-					rc, err := tests.ObjectToJSONBody(c)
+					rc, err := objectToJSONBody(c)
 					tests.Assert(t, err == nil)
 
 					header := http.Header{}
@@ -464,7 +476,7 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 						StatusCode: http.StatusOK,
 					}
 
-					rc, err := tests.ObjectToJSONBody(c)
+					rc, err := objectToJSONBody(c)
 					tests.Assert(t, err == nil)
 
 					header := http.Header{}
@@ -595,7 +607,7 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 						StatusCode: http.StatusOK,
 					}
 
-					rc, err := tests.ObjectToJSONBody(c)
+					rc, err := objectToJSONBody(c)
 					tests.Assert(t, err == nil)
 
 					header := http.Header{}
