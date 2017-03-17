@@ -23,7 +23,7 @@ import (
 	"github.com/coreos/quartermaster/pkg/spec"
 	qmstorage "github.com/coreos/quartermaster/pkg/storage"
 	"github.com/coreos/quartermaster/pkg/tests"
-	"github.com/coreos/quartermaster/pkg/utils"
+	"github.com/heketi/utils"
 
 	heketiclient "github.com/heketi/heketi/client/api/go-client"
 	"github.com/heketi/heketi/pkg/heketitest"

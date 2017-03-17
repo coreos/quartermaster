@@ -1,5 +1,5 @@
-hash: b28bf2ca5a087e0dd73293801b436003ead93042046c529663b08093112c45f0
-updated: 2017-02-10T15:33:22.147113996-08:00
+hash: 448ac37196339ccd5d9e6b0d600a50584158ac7870649097193d8deec463d115
+updated: 2017-03-17T12:21:02.847835493-04:00
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -165,7 +165,7 @@ imports:
 - name: github.com/heketi/tests
   version: f3775cbcefd6822086c729e3ce4b70ca85a5bd21
 - name: github.com/heketi/utils
-  version: 34e5a97154d1d016635ad6ce436a68fdc8a75876
+  version: 435bc5bdfa64550e867cd7ef0b9181adc02b88d2
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jonboulle/clockwork
