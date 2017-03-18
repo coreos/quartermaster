@@ -33,10 +33,7 @@ import (
 )
 
 var (
-	logger          = utils.NewLogger("glusterfs", utils.LEVEL_DEBUG)
-	heketiAddressFn = func(namespace string) (string, error) {
-		return "http://localhost:8080", nil
-	}
+	logger              = utils.NewLogger("glusterfs", utils.LEVEL_DEBUG)
 	waitForDeploymentFn = func(client clientset.Interface, namespace, name string, available int32) error {
 		return operator.WaitForDeploymentReady(client, namespace, name, available)
 	}
@@ -83,7 +80,7 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 
 	// Get a client
 	if c.Spec.GlusterFS == nil || len(c.Spec.GlusterFS.Cluster) == 0 {
-		httpAddress, err := heketiAddressFn(c.GetNamespace())
+		httpAddress, err := st.getHeketiAddress(c.GetNamespace())
 		if err != nil {
 			return nil, err
 		}

@@ -19,8 +19,11 @@ import (
 	"encoding/json"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"net/url"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/coreos/quartermaster/pkg/operator"
@@ -56,6 +59,33 @@ func objectToJSONBody(object interface{}) (io.ReadCloser, error) {
 func getGlusterStorageFromStorageOperator(o qmstorage.StorageType) *GlusterStorage {
 	sfns := o.(*qmstorage.StorageHandlerFuncs)
 	return sfns.StorageHandler.(*GlusterStorage)
+}
+
+// Create fake service
+func getHeketiServiceObject(t *testing.T, namespace, fakeURL string) *api.Service {
+	u, err := url.Parse(fakeURL)
+	tests.Assert(t, err == nil)
+
+	hostname, portstring, err := net.SplitHostPort(u.Host)
+	tests.Assert(t, err == nil)
+	porti, err := strconv.Atoi(portstring)
+	tests.Assert(t, err == nil)
+	port := int32(porti)
+
+	return &api.Service{
+		ObjectMeta: api.ObjectMeta{
+			Name:      "heketi",
+			Namespace: namespace,
+		},
+		Spec: api.ServiceSpec{
+			ClusterIP: hostname,
+			Ports: []api.ServicePort{
+				{
+					Port: port,
+				},
+			},
+		},
+	}
 }
 
 func TestNewGlusterFSStorage(t *testing.T) {
@@ -97,19 +127,14 @@ func TestGlusterFSAddClusterNoHeketi(t *testing.T) {
 		},
 	}
 
-	// Set to garbage
-	defer tests.Patch(&heketiAddressFn,
-		func(namespace string) (string, error) {
-			return "http://nothing:12345", nil
-		}).Restore()
-
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {
 			return nil
 		}).Restore()
 
-	client := fakeclientset.NewSimpleClientset()
+	client := fakeclientset.NewSimpleClientset(
+		getHeketiServiceObject(t, "test", "http://thisAddressDoesNotExist:1234"))
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
 	}
@@ -140,14 +165,6 @@ func TestGlusterFSAddNewClusterWithHeketi(t *testing.T) {
 	heketiServer := heketitest.NewHeketiMockTestServerDefault()
 	defer heketiServer.Close()
 
-	// Set server
-	called := 0
-	defer tests.Patch(&heketiAddressFn,
-		func(namespace string) (string, error) {
-			called++
-			return heketiServer.URL(), nil
-		}).Restore()
-
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {
@@ -155,7 +172,8 @@ func TestGlusterFSAddNewClusterWithHeketi(t *testing.T) {
 		}).Restore()
 
 	// Setup fake Kube clients
-	client := fakeclientset.NewSimpleClientset()
+	client := fakeclientset.NewSimpleClientset(
+		getHeketiServiceObject(t, "test", heketiServer.URL()))
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
 	}
@@ -163,7 +181,6 @@ func TestGlusterFSAddNewClusterWithHeketi(t *testing.T) {
 	tests.Assert(t, err == nil)
 
 	retc, err := op.AddCluster(c)
-	tests.Assert(t, called == 1)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retc != nil)
 	tests.Assert(t, len(retc.Spec.GlusterFS.Cluster) != 0)
@@ -191,14 +208,6 @@ func TestGlusterFSExistingClusterWithHeketi(t *testing.T) {
 	heketiServer := heketitest.NewHeketiMockTestServerDefault()
 	defer heketiServer.Close()
 
-	// Set server
-	called := 0
-	defer tests.Patch(&heketiAddressFn,
-		func(namespace string) (string, error) {
-			called++
-			return heketiServer.URL(), nil
-		}).Restore()
-
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {
@@ -206,7 +215,8 @@ func TestGlusterFSExistingClusterWithHeketi(t *testing.T) {
 		}).Restore()
 
 	// Setup fake Kube clients
-	client := fakeclientset.NewSimpleClientset()
+	client := fakeclientset.NewSimpleClientset(
+		getHeketiServiceObject(t, "test", heketiServer.URL()))
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
 		Client: fakerestclient.CreateHTTPClient(
@@ -218,7 +228,6 @@ func TestGlusterFSExistingClusterWithHeketi(t *testing.T) {
 	tests.Assert(t, err == nil)
 
 	retc, err := op.AddCluster(c)
-	tests.Assert(t, called == 0)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retc == nil)
 	tests.Assert(t, c.Spec.GlusterFS.Cluster == "ABC")
@@ -323,14 +332,6 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 	heketiServer := heketitest.NewHeketiMockTestServerDefault()
 	defer heketiServer.Close()
 
-	// Set server
-	called := 0
-	defer tests.Patch(&heketiAddressFn,
-		func(namespace string) (string, error) {
-			called++
-			return heketiServer.URL(), nil
-		}).Restore()
-
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {
@@ -338,7 +339,8 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 		}).Restore()
 
 	// Setup fake Kube clients
-	client := fakeclientset.NewSimpleClientset()
+	client := fakeclientset.NewSimpleClientset(
+		getHeketiServiceObject(t, "test", heketiServer.URL()))
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
 		Client: fakerestclient.CreateHTTPClient(
@@ -376,7 +378,6 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 	// Add the cluster
 	tests.Assert(t, c.Spec.GlusterFS == nil)
 	retc, err := op.AddCluster(c)
-	tests.Assert(t, called == 1)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, len(retc.Spec.GlusterFS.Cluster) != 0)
 
@@ -451,14 +452,6 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 	heketiServer := heketitest.NewHeketiMockTestServerDefault()
 	defer heketiServer.Close()
 
-	// Set server
-	called := 0
-	defer tests.Patch(&heketiAddressFn,
-		func(namespace string) (string, error) {
-			called++
-			return heketiServer.URL(), nil
-		}).Restore()
-
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {
@@ -466,7 +459,8 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 		}).Restore()
 
 	// Setup fake Kube clients
-	client := fakeclientset.NewSimpleClientset()
+	client := fakeclientset.NewSimpleClientset(
+		getHeketiServiceObject(t, "test", heketiServer.URL()))
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
 		Client: fakerestclient.CreateHTTPClient(
@@ -499,7 +493,6 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 	// Add the cluster
 	tests.Assert(t, c.Spec.GlusterFS == nil)
 	retc, err := op.AddCluster(c)
-	tests.Assert(t, called == 1)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retc != nil)
 
@@ -582,14 +575,6 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 	heketiServer := heketitest.NewHeketiMockTestServerDefault()
 	defer heketiServer.Close()
 
-	// Set server
-	called := 0
-	defer tests.Patch(&heketiAddressFn,
-		func(namespace string) (string, error) {
-			called++
-			return heketiServer.URL(), nil
-		}).Restore()
-
 	// Don't wait for deployemnt
 	defer tests.Patch(&waitForDeploymentFn,
 		func(client clientset.Interface, namespace, name string, available int32) error {
@@ -597,7 +582,8 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 		}).Restore()
 
 	// Setup fake Kube clients
-	client := fakeclientset.NewSimpleClientset()
+	client := fakeclientset.NewSimpleClientset(
+		getHeketiServiceObject(t, "test", heketiServer.URL()))
 	rclient := &fakerestclient.RESTClient{
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
 		Client: fakerestclient.CreateHTTPClient(
@@ -630,7 +616,6 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 	// Add the cluster
 	tests.Assert(t, c.Spec.GlusterFS == nil)
 	retc, err := op.AddCluster(c)
-	tests.Assert(t, called == 1)
 	tests.Assert(t, err == nil)
 	tests.Assert(t, retc != nil)
 

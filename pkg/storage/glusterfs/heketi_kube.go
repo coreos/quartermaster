@@ -15,6 +15,7 @@
 package glusterfs
 
 import (
+	"fmt"
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -24,7 +25,7 @@ import (
 )
 
 func (st *GlusterStorage) heketiClient(namespace string) (*heketiclient.Client, error) {
-	httpAddress, err := heketiAddressFn(namespace)
+	httpAddress, err := st.getHeketiAddress(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -35,16 +36,21 @@ func (st *GlusterStorage) heketiClient(namespace string) (*heketiclient.Client, 
 }
 
 func (st *GlusterStorage) getHeketiAddress(namespace string) (string, error) {
-	/*
-		service, err := st.client.Core().Services(namespace).Get("heketi")
-		if err != nil {
-			return "", logger.LogError().Log("msg", "error accessing heketi service", "err", err)
-		}
-	*/
+	service, err := st.client.Core().Services(namespace).Get("heketi")
+	if err != nil {
+		return "", logger.LogError("Failed to get cluster ip from Heketi service: %v", err)
+	}
+	if len(service.Spec.Ports) == 0 {
+		return "", logger.LogError("Heketi service in namespace %s is missing port value", namespace)
+	}
+	address := fmt.Sprintf("http://%s:%d",
+		service.Spec.ClusterIP,
+		service.Spec.Ports[0].Port)
+	logger.Debug("Got: %s", address)
 
-	//return service.Spec.ClusterIP, nil
+	return address, nil
 	// During development, running QM remotely, setup a portforward to heketi pod
-	return "http://localhost:8080", nil
+	//return "http://localhost:8080", nil
 }
 
 func (st *GlusterStorage) deployHeketi(namespace string) error {
