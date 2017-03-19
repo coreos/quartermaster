@@ -191,24 +191,15 @@ func (st *GlusterStorage) makeGlusterFSDeploymentSpec(s *spec.StorageNode) (*ext
 }
 
 // Deploy a *single* StorageClass for all GlusterFS clusters in this
-// namespace.  Even if there many GlusterFS clusters in a single namespace,
-// Heketi takes care of getting a volume from any of them.  Therefore,
-// there is a StorageClass per Heketi instance.
+// namespace.  Even if there are many GlusterFS clusters in a single namespace,
+// Heketi takes care of creating a volume from any of them.  Therefore,
+// there is a single StorageClass per Heketi instance.
 func (st *GlusterStorage) deployStorageClass(namespace string) error {
 
-	/*
-		// TODO(lpabon): Change to use this when getHeketiAddress()
-		// is fixed
-		heketiAddress, err := st.getHeketiAddress(namespace)
-		if err != nil {
-			return err
-		}
-	*/
-
-	// TODO(lpabon): remove with the above
-	service, err := st.client.Core().Services(namespace).Get("heketi")
+	// Get Heketi address from service
+	heketiAddress, err := st.getHeketiAddress(namespace)
 	if err != nil {
-		return logger.LogError("error accessing heketi service: %v", err)
+		return err
 	}
 
 	// Create a name for the storageclass for this namespace
@@ -226,7 +217,7 @@ func (st *GlusterStorage) deployStorageClass(namespace string) error {
 		},
 		Provisioner: "kubernetes.io/glusterfs",
 		Parameters: map[string]string{
-			"resturl": "http://" + service.Spec.ClusterIP + ":8080",
+			"resturl": heketiAddress,
 		},
 	}
 
