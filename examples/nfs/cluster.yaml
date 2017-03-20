@@ -1,10 +1,17 @@
 apiVersion: storage.coreos.com/v1alpha1
 kind: StorageCluster
 metadata:
-    name: nfs1
+    name: nfs
 spec:
     type: nfs
     storageNodes:
-        - nodeName: ip-10-0-0-169.us-west-2.compute.internal
+        - nodeName: node0
           directories:
               - /export
+          nfs:
+              size: 10Gi
+        - nodeName: node1
+          directories:
+              - /export
+          nfs:
+              size: 20Gi
