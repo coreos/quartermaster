@@ -163,10 +163,8 @@ type GlusterStorageNode struct {
 
 // NFSStorageNode defines the specifics of how this Gluster instance should be instantiated.
 type NFSStorageNode struct {
-	// TODO(barakmich): More NFS options as per `man nfs` or `man exports`.
-	ReadOnly     bool `json:"readOnly"`     // This node exports NFS volumes ReadOnly.
-	SubtreeCheck bool `json:"subtreeCheck"` // Enable mount subtree checking on the host.
-	NoRootSquash bool `json:"noRootSquash"` // Disable root squashing, mapping UID 0 in the client to UID 0 on the host.
+	ReadOnly bool   `json:"readOnly"` // This node exports NFS volumes ReadOnly.
+	Size     string `json:"size"`     // Size in GB of share
 }
 
 type StatusCondition struct {

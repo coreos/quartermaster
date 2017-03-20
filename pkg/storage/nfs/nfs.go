@@ -24,9 +24,12 @@ import (
 	"github.com/heketi/utils"
 
 	"k8s.io/kubernetes/pkg/api"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	"k8s.io/kubernetes/pkg/api/resource"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 var (
@@ -125,6 +128,7 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 		Template: api.PodTemplateSpec{
 			ObjectMeta: api.ObjectMeta{
 				Labels: map[string]string{
+					"name":             s.Name,
 					"nfs-ganesha-node": s.Name,
 					"quartermaster":    s.Name,
 				},
@@ -175,6 +179,20 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 func (st *NfsStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Debug("add node %v", s.GetName())
 
+	// Create Service for this node
+	err := st.deployNfsService(s.GetNamespace(), s.GetName())
+	if err != nil {
+		return nil, logger.LogError("Failed to deploy service for %v/%v: %v",
+			s.GetNamespace(), s.GetName(), err)
+	}
+
+	// Create PV
+	err = st.deployPv(s)
+	if err != nil {
+		return nil, logger.LogError("Failed to deploy pv %s/%s: %v",
+			s.GetNamespace(), s.GetName(), err)
+	}
+
 	// Update status of node and cluster
 	s.Status.Ready = true
 	s.Status.Message = "NFS Started"
@@ -205,9 +223,138 @@ func (st *NfsStorage) UpdateNode(s *spec.StorageNode) (*spec.StorageNode, error)
 
 func (st *NfsStorage) DeleteNode(s *spec.StorageNode) error {
 	logger.Debug("Delete node %v", s.GetName())
+
+	// Delete PV
+	err := st.client.Core().PersistentVolumes().Delete(s.GetName(), nil)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	// Delete service
+	err = st.client.Core().Services(s.GetNamespace()).Delete(s.GetName(), nil)
+	if err != nil {
+		return logger.Err(err)
+	}
+
 	return nil
 }
 
 func (st *NfsStorage) Type() spec.StorageTypeIdentifier {
 	return spec.StorageTypeIdentifierNFS
+}
+
+func (st *NfsStorage) deployPv(s *spec.StorageNode) error {
+
+	// Get IP to service
+	service, err := st.client.Core().Services(s.GetNamespace()).Get(s.GetName())
+	if err != nil {
+		return logger.LogError("Failed to get network address from service %v/%v: %v",
+			s.GetNamespace(), s.GetName(), err)
+	}
+
+	if len(service.Spec.ClusterIP) == 0 {
+		return logger.LogError("Service %v/%v does not contain a cluster IP",
+			s.GetNamespace(), s.GetName())
+	}
+
+	// Set values from storagenode spec
+	size := "10Gi"
+	readOnly := false
+	if s.Spec.NFS != nil {
+		if len(s.Spec.NFS.Size) != 0 {
+			size = s.Spec.NFS.Size
+		}
+		readOnly = s.Spec.NFS.ReadOnly
+	}
+
+	// Create persistent volume
+	pv := &api.PersistentVolume{
+		ObjectMeta: api.ObjectMeta{
+			Name:      s.GetName(),
+			Namespace: s.GetNamespace(),
+			Annotations: map[string]string{
+				"description": "Exposes NFS Service",
+			},
+		},
+		Spec: api.PersistentVolumeSpec{
+			Capacity: api.ResourceList{
+				api.ResourceName(api.ResourceStorage): resource.MustParse(size),
+			},
+			AccessModes: []api.PersistentVolumeAccessMode{
+				api.ReadWriteMany,
+			},
+			PersistentVolumeSource: api.PersistentVolumeSource{
+				NFS: &api.NFSVolumeSource{
+					Server:   service.Spec.ClusterIP,
+					ReadOnly: readOnly,
+
+					// TODO(lpabon): This has to be changed when
+					// configMaps are supported
+					Path: "/exports",
+				},
+			},
+		},
+	}
+
+	pvs := st.client.Core().PersistentVolumes()
+	_, err = pvs.Create(pv)
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	} else if err != nil {
+		logger.Err(err)
+	}
+
+	return nil
+}
+
+func (st *NfsStorage) deployNfsService(namespace, name string) error {
+	s := &api.Service{
+		ObjectMeta: api.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				"description": "Exposes NFS Service",
+			},
+		},
+		Spec: api.ServiceSpec{
+			Selector: map[string]string{
+				"name": name,
+			},
+			Ports: []api.ServicePort{
+				api.ServicePort{
+					Name: "nfs",
+					Port: 2049,
+					TargetPort: intstr.IntOrString{
+						IntVal: 2049,
+					},
+				},
+				api.ServicePort{
+					Name: "mountd",
+					Port: 20048,
+					TargetPort: intstr.IntOrString{
+						IntVal: 20048,
+					},
+				},
+				api.ServicePort{
+					Name: "rpcbind",
+					Port: 111,
+					TargetPort: intstr.IntOrString{
+						IntVal: 111,
+					},
+				},
+			},
+		},
+	}
+
+	// Submit the service
+	services := st.client.Core().Services(namespace)
+	_, err := services.Create(s)
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	} else if err != nil {
+		logger.Err(err)
+	}
+
+	logger.Debug("service account created")
+	return nil
 }

@@ -5,27 +5,27 @@ metadata:
 spec:
     type: glusterfs
     storageNodes:
-        - nodeName: ip-10-0-0-167.us-west-2.compute.internal
+        - nodeName: ip-10-0-64-65.us-west-1.compute.internal
           storageNetwork:
             ips:
-                - 10.0.0.167
+                - 10.0.64.65
           devices:
-              - /dev/xvdf
+              - /dev/xvdc
           glusterfs:
               zone: 1
-        - nodeName: ip-10-0-0-168.us-west-2.compute.internal
+        - nodeName: ip-10-0-112-197.us-west-1.compute.internal
           storageNetwork:
             ips:
-                - 10.0.0.168
+                - 10.0.112.197
           devices:
-              - /dev/xvdf
+              - /dev/xvdc
           glusterfs:
               zone: 2
-        - nodeName: ip-10-0-0-169.us-west-2.compute.internal
+        - nodeName: ip-10-0-65-93.us-west-1.compute.internal
           storageNetwork:
             ips:
-                - 10.0.0.169
+                - 10.0.65.93
           devices:
-              - /dev/xvdf
+              - /dev/xvdc
           glusterfs:
               zone: 3

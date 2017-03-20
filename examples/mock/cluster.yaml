@@ -5,7 +5,8 @@ metadata:
 spec:
     type: mock
     storageNodes:
-        - directories:
+        - nodeName: node0
+          directories:
               - /export
         - directories:
               - /export
