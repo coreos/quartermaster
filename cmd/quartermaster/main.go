@@ -23,10 +23,14 @@ import (
 	"github.com/coreos/quartermaster/pkg/storage/glusterfs"
 	"github.com/coreos/quartermaster/pkg/storage/mock"
 	"github.com/coreos/quartermaster/pkg/storage/nfs"
+
+	"github.com/heketi/utils"
 )
 
 var (
-	cfg operator.Config
+	cfg                   operator.Config
+	QUARTERMASTER_VERSION = "(dev)"
+	logger                = utils.NewLogger("main", utils.LEVEL_INFO)
 )
 
 func init() {
@@ -42,6 +46,7 @@ func init() {
 }
 
 func main() {
+	logger.Info("Version: %s", QUARTERMASTER_VERSION)
 	c, err := operator.New(cfg, nfs.New, mock.New, glusterfs.New)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
