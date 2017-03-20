@@ -10,7 +10,7 @@ import:
 - package: github.com/heketi/tests
   version: f3775cbcefd6822086c729e3ce4b70ca85a5bd21
 - package: k8s.io/kubernetes
-  version: v1.5.2
+  version: v1.5.4
   subpackages:
   - pkg/api
   - pkg/api/errors
