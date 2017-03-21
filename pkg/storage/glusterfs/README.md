@@ -8,15 +8,30 @@ with dynamic provisioning of GlusterFS volumes from multiple storage clusters.
 
 ## Requirements
 
-Although it is currently being investigated how to do this automatically,
+To you create at least a three node cluster, you can use
+[Matchbox/Bootkube](https://github.com/coreos/matchbox/blob/master/Documentation/bootkube.md)
+or
+[Kubernetes-CentOS](https://github.com/lpabon/kubernetes-centos).
+
+* At least 2Gi RAM
+    * Matchbox/Bootkube: Edit `scripts/libvirt` in Matchbox and change the value
+      of `--memory=1024` to `--memory=2048`.
+* At least one raw extra disk for use by GlusterFS
+    * Matchbox/Bootkube: Edit `scripts/libvirt` in Matchbox and add the switch
+      `--disk size=100` after `--disk pool=default,size=6`.
+* Although it is currently being investigated how to do this automatically,
 ports on the nodes must be opened according to [Infrastructure Requirements](https://github.com/gluster/gluster-kubernetes/blob/master/docs/setup-guide.md#infrastructure-requirements).
 It is necessary to open these ports because the containers require (today) a network
 using host-net, not cluster net.
-
-Also, if the Kuberntes system is running some time of authorization mechanism,
+    * Not necessary if using Matchbox/Bootkube or Kubernetes-CentOS.
+* If the Kubernetes system is running some time of authorization mechanism,
 like [RBAC](https://kubernetes.io/docs/admin/authorization/), you may need to setup
 a service account called `heketi-service-account` which provides the appropriate
-rules for Heketi to run container exec commands successfully.  See
+rules for Heketi to run container exec commands successfully. See
+[`examples/glusterfs/auth/rbac`](https://github.com/coreos/quartermaster/tree/master/examples/glusterfs/auth/rbac).
+    * Needed for Matchbox/Bootkube, but not for Kubernetes-CentOS since the latter has no authorization.
+* Noes need to have the kernel module `dm_thin_pool` loaded
+    * Needed for Matchbox/Bootkube, but already installed in Kubernetes-CentOS.
 
 ## Deployment
 

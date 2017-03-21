@@ -32,6 +32,15 @@ Quartermaster framework as well as adding support for more storage systems
 
 # Getting Started
 
+## Kubernetes Development Environment Setup
+
+You can use [minikube](https://github.com/kubernetes/minikube) but only for `mock`
+or `nfs` storage deployments since minikube is only a single node. To create a
+Kubernetes cluster with storage, it is recommended you use
+[Matchbox/Bootkube](https://github.com/coreos/matchbox/blob/master/Documentation/bootkube.md)
+or [Kubernetes-CentOS](https://github.com/lpabon/kubernetes-centos).  Check driver
+documentation for any requirements on these systems.
+
 ## Deploying quartermaster
 
 Deploy Quartermaster to the kube-system namespace:
