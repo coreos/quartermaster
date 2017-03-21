@@ -76,12 +76,12 @@ To easiest way to check for errors is to check the logs of Heketi and QM.
 
 ## Example Application
 
-The file `examples/nfs/nginx-demo.yaml` contains an example application set
-which will utilize one of the PVs created. Please edit the PersistentVolumeClaim
-annotation to match the name of the storage class. To run the application type:
+The file [`examples/glusterfs/nginx-demo.yaml`](https://github.com/coreos/quartermaster/blob/master/examples/glusterfs/nginx-demo.yaml)
+contains an example application set which will utilize dynamic provisioning to
+create a physical volume. Simply run the following command to start the demo:
 
 ```
-$ kubectl create -f examples/nfs/nginx-demo.yaml
+$ kubectl create -f examples/glusterfs/nginx-demo.yaml
 ```
 
 This application runs a set of pods which write a `index.html` file with the
