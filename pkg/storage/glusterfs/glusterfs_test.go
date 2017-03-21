@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/coreos/quartermaster/pkg/operator"
 	"github.com/coreos/quartermaster/pkg/spec"
@@ -132,6 +133,8 @@ func TestGlusterFSAddClusterNoHeketi(t *testing.T) {
 		func(client clientset.Interface, namespace, name string, available int32) error {
 			return nil
 		}).Restore()
+	defer tests.Patch(&max_loops, 1).Restore()
+	defer tests.Patch(&max_wait, time.Millisecond).Restore()
 
 	client := fakeclientset.NewSimpleClientset(
 		getHeketiServiceObject(t, "test", "http://thisAddressDoesNotExist:1234"))
