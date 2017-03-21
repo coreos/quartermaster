@@ -16,6 +16,7 @@ package glusterfs
 
 import (
 	"sort"
+	"time"
 
 	qmclient "github.com/coreos/quartermaster/pkg/client"
 	"github.com/coreos/quartermaster/pkg/operator"
@@ -34,6 +35,8 @@ import (
 
 var (
 	logger              = utils.NewLogger("glusterfs", utils.LEVEL_DEBUG)
+	max_loops           = 12
+	max_wait            = 5 * time.Second
 	waitForDeploymentFn = func(client clientset.Interface, namespace, name string, available int32) error {
 		return operator.WaitForDeploymentReady(client, namespace, name, available)
 	}
@@ -69,6 +72,25 @@ func (st *GlusterStorage) Init() error {
 	return nil
 }
 
+// This is the first communication with Heketi.  Sometimes, the network
+// connections between pods are not setup instantly, so we will need to retry.
+func (st *GlusterStorage) createCluster(h *heketiclient.Client) (*heketiapi.ClusterInfoResponse, error) {
+	var err error
+	var hcluster *heketiapi.ClusterInfoResponse
+
+	// Wait maximum of one minute
+	for count := 0; count < max_loops; count++ {
+		hcluster, err = h.ClusterCreate()
+		if err != nil {
+			time.Sleep(max_wait)
+		} else {
+			return hcluster, nil
+		}
+	}
+
+	return nil, err
+}
+
 func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageCluster, error) {
 	logger.Debug("msg add cluster cluster %v", c.Name)
 
@@ -80,15 +102,13 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 
 	// Get a client
 	if c.Spec.GlusterFS == nil || len(c.Spec.GlusterFS.Cluster) == 0 {
-		httpAddress, err := st.getHeketiAddress(c.GetNamespace())
+		// TODO(lpabon): Need to set user and secret
+		h, err := st.heketiClient(c.GetNamespace())
 		if err != nil {
-			return nil, err
+			return nil, logger.Err(err)
 		}
 
-		// Create a new cluster
-		// TODO(lpabon): Need to set user and secret
-		h := heketiclient.NewClientNoAuth(httpAddress)
-		hcluster, err := h.ClusterCreate()
+		hcluster, err := st.createCluster(h)
 		if err != nil {
 			return nil, logger.LogError("err: unable to create cluster in Heketi: %v", err)
 		} else {
