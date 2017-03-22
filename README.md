@@ -22,13 +22,8 @@ Quartermaster framework as well as adding support for more storage systems
 # More information
 
 * [Architecture Document](http://bit.ly/2kikXpF)
-* [Demo deployment of GlusterFS cluster](http://bit.ly/2kHUEc7)
+* [Demo deployment of GlusterFS cluster](https://asciinema.org/a/108285)
 * [Project Quartermaster Slides for K8S Storage-SIG](http://bit.ly/2jp5VB9)
-
-# Community
-
-* Mailing list: <TBD Google group>
-* IRC: #quartermaster on <TBD>
 
 # Getting Started
 
