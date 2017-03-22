@@ -30,7 +30,7 @@ a service account called `heketi-service-account` which provides the appropriate
 rules for Heketi to run container exec commands successfully. See
 [`examples/glusterfs/auth/rbac`](https://github.com/coreos/quartermaster/tree/master/examples/glusterfs/auth/rbac).
     * Needed for Matchbox/Bootkube, but not for Kubernetes-CentOS since the latter has no authorization.
-* Noes need to have the kernel module `dm_thin_pool` loaded
+* Nodes need to have the kernel module `dm_thin_pool` loaded
     * Needed for Matchbox/Bootkube, but already installed in Kubernetes-CentOS.
 
 ## Deployment
