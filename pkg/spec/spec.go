@@ -74,6 +74,7 @@ const (
 	StorageTypeIdentifierMock      StorageTypeIdentifier = "mock"
 	StorageTypeIdentifierNFS       StorageTypeIdentifier = "nfs"
 	StorageTypeIdentifierGlusterFS StorageTypeIdentifier = "glusterfs"
+	StorageTypeIdentifierSwift     StorageTypeIdentifier = "swift"
 )
 
 // Specification for a StorageCluster
