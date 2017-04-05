@@ -1,0 +1,10 @@
+apiVersion: storage.coreos.com/v1alpha1
+kind: StorageCluster
+metadata:
+    name: swift
+spec:
+    type: swift
+    storageNodes:
+        - nodeName: minikube
+          directories:
+              - /export
