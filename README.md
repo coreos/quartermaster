@@ -50,6 +50,7 @@ systems onto your Kubernetes cluster.
 * [Mock](pkg/storage/mock/README.md): The fake storage system deployment used for developers.
 * [NFS](pkg/storage/nfs/README.md): The simplest storage system deployment.
 * [GlusterFS](pkg/storage/glusterfs/README.md): A reliable distributed file system.
+* [Swift](pkg/storage/swift/README.md): OpenStack Swift object storage
 
 # Developers
 
