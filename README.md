@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/coreos/quartermaster.svg?branch=master)](https://travis-ci.org/coreos/quartermaster)
+
 # Overview
 
 Quartermaster is a framework for managing _containerized storage systems_ like
