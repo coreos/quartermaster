@@ -6,5 +6,10 @@ spec:
     type: swift
     storageNodes:
         - nodeName: minikube
-          directories:
-              - /export
+          storageNetwork:
+            ips:
+              - 10.0.0.150
+          devices:
+              - vdb1
+              - vdc1
+              - vdd1
