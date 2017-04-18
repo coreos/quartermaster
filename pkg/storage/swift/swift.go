@@ -24,7 +24,6 @@ import (
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
@@ -137,8 +136,14 @@ func (st *SwiftStorage) UpdateCluster(old *spec.StorageCluster,
 
 func (st *SwiftStorage) DeleteCluster(c *spec.StorageCluster) error {
 	logger.Info("Deleting cluster %v", c.GetName())
+
 	services := st.client.Core().Services(c.Namespace)
 	err := services.Delete("swiftservice", nil)
+	if err != nil {
+		return err
+	}
+
+	err = services.Delete("swift-ring-master-svc", nil)
 	if err != nil {
 		return err
 	}
@@ -152,8 +157,7 @@ func (st *SwiftStorage) DeleteCluster(c *spec.StorageCluster) error {
 		return err
 	}
 
-	jobs := st.client.Batch().Jobs(c.Namespace)
-	err = jobs.Delete("swift-ring-builder-job",
+	err = deployments.Delete("swift-ring-master-deploy",
 		&api.DeleteOptions{OrphanDependents: &orphanDependents})
 	if err != nil {
 		return err
@@ -251,6 +255,12 @@ func (st *SwiftStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Dep
 								ContainerPort: 6200,
 							},
 						},
+					},
+					api.Container{
+						Name:            "swift-ring-minion",
+						Image:           "thiagodasilva/swift_ring_minion:dev-v4",
+						ImagePullPolicy: api.PullIfNotPresent,
+						VolumeMounts:    mounts,
 					},
 				},
 				Volumes: volumes,
@@ -391,6 +401,12 @@ func (st *SwiftStorage) deployProxy(namespace string) error {
 								},
 							},
 						},
+						api.Container{
+							Name:            "swift-ring-minion",
+							Image:           "thiagodasilva/swift_ring_minion:dev-v4",
+							ImagePullPolicy: api.PullIfNotPresent,
+							VolumeMounts:    mounts,
+						},
 					},
 					Volumes: volumes,
 				},
@@ -468,22 +484,6 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 
 	volumes := []api.Volume{
 		api.Volume{
-			Name: "swift-proxy-etc",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
-					Path: "/var/lib/swift_proxy/etc",
-				},
-			},
-		},
-		api.Volume{
-			Name: "swift-storage-etc",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
-					Path: "/var/lib/swift_storage/etc",
-				},
-			},
-		},
-		api.Volume{
 			Name: "config-swift-cluster",
 			VolumeSource: api.VolumeSource{
 				ConfigMap: &api.ConfigMapVolumeSource{
@@ -500,39 +500,45 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 
 	mounts := []api.VolumeMount{
 		api.VolumeMount{
-			Name:      "swift-proxy-etc",
-			MountPath: "/etc/proxy_rings",
-		},
-		api.VolumeMount{
-			Name:      "swift-storage-etc",
-			MountPath: "/etc/storage_rings",
-		},
-		api.VolumeMount{
 			Name:      "config-swift-cluster",
 			MountPath: "/etc/swift_config",
 		},
 	}
 
-	ringJob := &batch.Job{
+	ringMasterDeploy := &extensions.Deployment{
 		ObjectMeta: api.ObjectMeta{
-			Name: "swift-ring-builder-job",
+			Name:      "swift-ring-master-deploy",
+			Namespace: c.Namespace,
+			Annotations: map[string]string{
+				"description": "Deployment spec for Swift Ring Master",
+			},
+			Labels: map[string]string{
+				"swift":         "swift-ring-master",
+				"quartermaster": "swift",
+			},
 		},
-		Spec: batch.JobSpec{
+		Spec: extensions.DeploymentSpec{
+			Replicas: 1,
 			Template: api.PodTemplateSpec{
 				ObjectMeta: api.ObjectMeta{
-					Name: "swift-ring-builder-pod",
+					Labels: map[string]string{
+						"swift":         "swift-ring-master",
+						"quartermaster": "swift",
+					},
+					Name: "swift-ring-master-pod",
 				},
-
 				Spec: api.PodSpec{
-					RestartPolicy: api.RestartPolicyNever,
 					Containers: []api.Container{
 						api.Container{
-							Name:  "swift-ring-builder-container",
-							Image: "thiagodasilva/swift_ring_builder:dev-v4",
-							Command: []string{
-								"/etc/swift/make_rings.sh",
+							Name:            "swift-ring-master",
+							Image:           "thiagodasilva/swift_ring_master:dev-v1",
+							ImagePullPolicy: api.PullIfNotPresent,
+							VolumeMounts:    mounts,
+							Ports: []api.ContainerPort{
+								api.ContainerPort{
+									ContainerPort: 8090,
+								},
 							},
-							VolumeMounts: mounts,
 						},
 					},
 					Volumes: volumes,
@@ -541,13 +547,71 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 		},
 	}
 
-	jobs := st.client.Batch().Jobs(c.Namespace)
-	_, err = jobs.Create(ringJob)
-	if err != nil {
+	deployments := st.client.Extensions().Deployments(c.Namespace)
+	_, err = deployments.Create(ringMasterDeploy)
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	} else if err != nil {
 		logger.Err(err)
 	}
-	logger.Debug("rings created")
 
+	// Wait until deployment ready
+	err = waitForDeploymentFn(st.client, c.Namespace,
+		ringMasterDeploy.GetName(), ringMasterDeploy.Spec.Replicas)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	err = st.deploySwiftRingMasterService(c.Namespace)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	logger.Debug("rings master deploy created")
+
+	return nil
+}
+
+func (st *SwiftStorage) deploySwiftRingMasterService(namespace string) error {
+	s := &api.Service{
+		ObjectMeta: api.ObjectMeta{
+			Name:      "swift-ring-master-svc",
+			Namespace: namespace,
+			Labels: map[string]string{
+				"swift": "swift-ring-master-svc",
+			},
+			Annotations: map[string]string{
+				"description": "Exposes Swift Ring Master Service",
+			},
+		},
+		Spec: api.ServiceSpec{
+			Selector: map[string]string{
+				"swift": "swift-ring-master",
+			},
+			ClusterIP: "10.0.0.248",
+			Type:      api.ServiceTypeClusterIP,
+			Ports: []api.ServicePort{
+				api.ServicePort{
+					Port: 8090,
+					TargetPort: intstr.IntOrString{
+						IntVal: 8090,
+					},
+				},
+			},
+		},
+	}
+
+	// Submit the service
+	services := st.client.Core().Services(namespace)
+	_, err := services.Create(s)
+	if apierrors.IsAlreadyExists(err) {
+		return nil
+	} else if err != nil {
+		logger.Err(err)
+		return err
+	}
+
+	logger.Debug("swift ring master service created")
 	return nil
 }
 
