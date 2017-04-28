@@ -258,7 +258,7 @@ func (st *SwiftStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Dep
 					},
 					api.Container{
 						Name:            "swift-ring-minion",
-						Image:           "thiagodasilva/swift_ring_minion:dev-v4",
+						Image:           "thiagodasilva/swift_ring_minion:dev-v5",
 						ImagePullPolicy: api.PullIfNotPresent,
 						VolumeMounts:    mounts,
 					},
@@ -403,7 +403,7 @@ func (st *SwiftStorage) deployProxy(namespace string) error {
 						},
 						api.Container{
 							Name:            "swift-ring-minion",
-							Image:           "thiagodasilva/swift_ring_minion:dev-v4",
+							Image:           "thiagodasilva/swift_ring_minion:dev-v5",
 							ImagePullPolicy: api.PullIfNotPresent,
 							VolumeMounts:    mounts,
 						},
@@ -588,7 +588,7 @@ func (st *SwiftStorage) deploySwiftRingMasterService(namespace string) error {
 			Selector: map[string]string{
 				"swift": "swift-ring-master",
 			},
-			ClusterIP: "10.0.0.248",
+			ClusterIP: "10.96.0.248", //10.96.253.129
 			Type:      api.ServiceTypeClusterIP,
 			Ports: []api.ServicePort{
 				api.ServicePort{
