@@ -5,10 +5,26 @@ metadata:
 spec:
     type: swift
     storageNodes:
-        - nodeName: minikube
+        - nodeName: node0
           storageNetwork:
             ips:
-              - 10.0.0.150
+              - 10.96.0.150
+          devices:
+              - vdb1
+              - vdc1
+              - vdd1
+        - nodeName: node1
+          storageNetwork:
+            ips:
+              - 10.96.0.151
+          devices:
+              - vdb1
+              - vdc1
+              - vdd1
+        - nodeName: node2
+          storageNetwork:
+            ips:
+              - 10.96.0.151
           devices:
               - vdb1
               - vdc1
