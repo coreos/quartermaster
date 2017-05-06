@@ -14,10 +14,8 @@ If you are new to the Github process, please see https://guides.github.com/intro
 1. Fork the quartermaster Github project
 1. Download latest Go to your system and install [glide](https://github.com/Masterminds/glide)
 1. Setup your [GOPATH](http://www.g33knotes.org/2014/07/60-second-count-down-to-go.html) environment
-1. Type: `mkdir -p $GOPATH/src/github.com/coreos`
-1. Type: `cd $GOPATH/src/github.com/coreos`
-1. Type: `git clone https://github.com/coreos/quartermaster.git`
-1. Type: `cd quartermaster`
+1. Type: `go get -d github.com/coreos/quartermaster`
+1. Type: `cd $GOPATH/src/github.com/coreos/quartermaster`
 1. Setup vendor dependencies: `glide install -v`
 1. Build: `make`
 
