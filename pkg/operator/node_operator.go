@@ -15,22 +15,18 @@
 package operator
 
 import (
-	"fmt"
-
 	"github.com/coreos/quartermaster/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/labels"
-)
 
-type StorageOperator interface {
-	Setup(stopc <-chan struct{}) error
-	HasSynced() bool
-}
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+)
 
 type StorageNodeOperator struct {
 	op      *Operator
+	queue   *queue
 	events  chan *spec.StorageNode
 	nodeInf cache.SharedIndexInformer
 	dsetInf cache.SharedIndexInformer
@@ -41,10 +37,10 @@ func NewStorageNodeOperator(op *Operator) StorageOperator {
 		op:     op,
 		events: make(chan *spec.StorageNode, 200),
 		nodeInf: cache.NewSharedIndexInformer(
-			NewStorageNodeListWatch(c.rclient),
+			NewStorageNodeListWatch(op.GetRESTClient()),
 			&spec.StorageNode{}, resyncPeriod, cache.Indexers{}),
 		dsetInf: cache.NewSharedIndexInformer(
-			cache.NewListWatchFromClient(c.kclient.Extensions().RESTClient(),
+			cache.NewListWatchFromClient(op.GetRESTClient(),
 				"deployments", api.NamespaceAll, nil),
 			&extensions.Deployment{}, resyncPeriod, cache.Indexers{}),
 	}
@@ -86,7 +82,6 @@ func (s *StorageNodeOperator) Setup(stopc <-chan struct{}) error {
 
 	go s.nodeInf.Run(stopc)
 	go s.dsetInf.Run(stopc)
-	go s.worker()
 	go func() {
 		<-stopc
 		close(s.events)
@@ -95,11 +90,11 @@ func (s *StorageNodeOperator) Setup(stopc <-chan struct{}) error {
 	return nil
 }
 
-func (c *Operator) enqueueStorageNode(p interface{}) {
+func (c *StorageNodeOperator) enqueueStorageNode(p interface{}) {
 	c.queue.add(p.(*spec.StorageNode))
 }
 
-func (c *Operator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
+func (c *StorageNodeOperator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
 	cache.ListAll(c.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
 		if f(o.(*spec.StorageNode)) {
 			c.enqueueStorageNode(o.(*spec.StorageNode))
@@ -107,13 +102,13 @@ func (c *Operator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
 	})
 }
 
-func (c *Operator) enqueueAll() {
+func (c *StorageNodeOperator) enqueueAll() {
 	cache.ListAll(c.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
 		c.enqueueStorageNode(o.(*spec.StorageNode))
 	})
 }
 
-func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
+func (c *StorageNodeOperator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
 	key, err := keyFunc(d)
 	if err != nil {
 		utilruntime.HandleError(logger.LogError("error creating key: %v", err))
@@ -132,21 +127,21 @@ func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.Stor
 	return s.(*spec.StorageNode)
 }
 
-func (c *Operator) deleteDeployment(o interface{}) {
+func (c *StorageNodeOperator) deleteDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
 	if s := c.storageNodeForDeployment(d); s != nil {
 		c.enqueueStorageNode(s)
 	}
 }
 
-func (c *Operator) addDeployment(o interface{}) {
+func (c *StorageNodeOperator) addDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
 	if s := c.storageNodeForDeployment(d); s != nil {
 		c.enqueueStorageNode(s)
 	}
 }
 
-func (c *Operator) updateDeployment(oldo, curo interface{}) {
+func (c *StorageNodeOperator) updateDeployment(oldo, curo interface{}) {
 	old := oldo.(*extensions.Deployment)
 	cur := curo.(*extensions.Deployment)
 
@@ -163,12 +158,4 @@ func (c *Operator) updateDeployment(oldo, curo interface{}) {
 
 func (s *StorageNodeOperator) HasSynced() bool {
 	return s.nodeInf.HasSynced() && s.dsetInf.HasSynced()
-}
-
-func (s *StorageNodeOperator) worker() {
-	for event := range s.events {
-		if err := s.reconcile(event); err != nil {
-			utilruntime.HandleError(fmt.Errorf("reconciliation failed: %s", err))
-		}
-	}
 }

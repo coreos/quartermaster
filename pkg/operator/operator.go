@@ -42,9 +42,8 @@ type Operator struct {
 	kclient        *clientset.Clientset
 	rclient        *restclient.RESTClient
 	storageSystems map[spec.StorageTypeIdentifier]qmstorage.StorageType
-	nodeInf        cache.SharedIndexInformer
-	dsetInf        cache.SharedIndexInformer
 	clusterOp      StorageOperator
+	nodeOp         StorageOperator
 	queue          *queue
 	host           string
 }
@@ -124,57 +123,17 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 		return logger.LogError("Unable to create TPR: %v", err)
 	}
 
-	// Create notification objects
-	c.nodeInf = cache.NewSharedIndexInformer(
-		NewStorageNodeListWatch(c.rclient),
-		&spec.StorageNode{}, resyncPeriod, cache.Indexers{})
-	c.dsetInf = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(c.kclient.Extensions().RESTClient(), "deployments", api.NamespaceAll, nil),
-		&extensions.Deployment{}, resyncPeriod, cache.Indexers{})
-
-	// Register Handlers
-	logger.Debug("register event handlers")
-	c.nodeInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(p interface{}) {
-			logger.Debug("enqueueStorageNode trigger for storage add")
-			c.enqueueStorageNode(p)
-		},
-		DeleteFunc: func(p interface{}) {
-			logger.Debug("enqueueStorageNode trigger for storage del")
-			c.enqueueStorageNode(p)
-		},
-		UpdateFunc: func(_, p interface{}) {
-			logger.Debug("enqueueStorageNode trigger for storage update")
-			c.enqueueStorageNode(p)
-		},
-	})
-	c.dsetInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(d interface{}) {
-			logger.Debug("addDeployment trigger for deployment add")
-			c.addDeployment(d)
-		},
-		DeleteFunc: func(d interface{}) {
-			logger.Debug("addDeployment trigger for deployment delete")
-			c.deleteDeployment(d)
-		},
-		UpdateFunc: func(old, cur interface{}) {
-			logger.Debug("addDeployment trigger for deployment update")
-			c.updateDeployment(old, cur)
-		},
-	})
-
 	// Setup StorageCluster Operator
 	c.clusterOp = NewStorageClusterOperator(c)
 	c.clusterOp.Setup(stopc)
 
-	// Spawn event handlers
-	go c.nodeInf.Run(stopc)
-	go c.dsetInf.Run(stopc)
+	// Setup StorageNode Operator
+	c.nodeOp = NewStorageNodeOperator(c)
+	c.nodeOp.Setup(stopc)
 
 	// Wait until event handlers are ready
 	logger.Info("Waiting for synchronization with Kubernetes TPR")
-	for !c.nodeInf.HasSynced() ||
-		!c.dsetInf.HasSynced() ||
+	for !c.nodeOp.HasSynced() ||
 		!c.clusterOp.HasSynced() {
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -202,24 +161,6 @@ func (q *queue) pop() (*spec.StorageNode, bool) {
 
 var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
 
-func (c *Operator) enqueueStorageNode(p interface{}) {
-	c.queue.add(p.(*spec.StorageNode))
-}
-
-func (c *Operator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
-	cache.ListAll(c.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
-		if f(o.(*spec.StorageNode)) {
-			c.enqueueStorageNode(o.(*spec.StorageNode))
-		}
-	})
-}
-
-func (c *Operator) enqueueAll() {
-	cache.ListAll(c.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
-		c.enqueueStorageNode(o.(*spec.StorageNode))
-	})
-}
-
 // worker runs a worker thread that just dequeues items, processes them, and marks them done.
 // It enforces that the syncHandler is never invoked concurrently with the same key.
 func (c *Operator) worker() {
@@ -231,54 +172,6 @@ func (c *Operator) worker() {
 		if err := c.reconcile(p); err != nil {
 			utilruntime.HandleError(logger.LogError("reconciliation failed: %v", err))
 		}
-	}
-}
-
-func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
-	key, err := keyFunc(d)
-	if err != nil {
-		utilruntime.HandleError(logger.LogError("error creating key: %v", err))
-		return nil
-	}
-
-	// Namespace/Name are one-to-one so the key will find the respective StorageNode resource.
-	s, exists, err := c.nodeInf.GetStore().GetByKey(key)
-	if err != nil {
-		utilruntime.HandleError(logger.LogError("error getting storage node resource: %v", err))
-		return nil
-	}
-	if !exists {
-		return nil
-	}
-	return s.(*spec.StorageNode)
-}
-
-func (c *Operator) deleteDeployment(o interface{}) {
-	d := o.(*extensions.Deployment)
-	if s := c.storageNodeForDeployment(d); s != nil {
-		c.enqueueStorageNode(s)
-	}
-}
-
-func (c *Operator) addDeployment(o interface{}) {
-	d := o.(*extensions.Deployment)
-	if s := c.storageNodeForDeployment(d); s != nil {
-		c.enqueueStorageNode(s)
-	}
-}
-
-func (c *Operator) updateDeployment(oldo, curo interface{}) {
-	old := oldo.(*extensions.Deployment)
-	cur := curo.(*extensions.Deployment)
-
-	// Periodic resync may resend the deployment without changes in-between.
-	// Also breaks loops created by updating the resource ourselves.
-	if old.ResourceVersion == cur.ResourceVersion {
-		return
-	}
-
-	if s := c.storageNodeForDeployment(cur); s != nil {
-		c.enqueueStorageNode(s)
 	}
 }
 

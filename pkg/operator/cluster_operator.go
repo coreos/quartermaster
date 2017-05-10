@@ -29,11 +29,6 @@ import (
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
-type StorageOperator interface {
-	Setup(stopc <-chan struct{}) error
-	HasSynced() bool
-}
-
 type StorageClusterOperator struct {
 	op     *Operator
 	events chan *spec.StorageCluster
