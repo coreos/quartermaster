@@ -15,10 +15,16 @@
 package operator
 
 import (
+	"time"
+
+	qmclient "github.com/coreos/quartermaster/pkg/client"
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+
 	"github.com/coreos/quartermaster/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/extensions"
 	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/labels"
 
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
@@ -158,4 +164,144 @@ func (c *StorageNodeOperator) updateDeployment(oldo, curo interface{}) {
 
 func (s *StorageNodeOperator) HasSynced() bool {
 	return s.nodeInf.HasSynced() && s.dsetInf.HasSynced()
+}
+
+// worker runs a worker thread that just dequeues items, processes them, and marks them done.
+// It enforces that the syncHandler is never invoked concurrently with the same key.
+func (c *StorageNodeOperator) worker() {
+	for {
+		p, ok := c.queue.pop()
+		if !ok {
+			return
+		}
+		if err := c.reconcile(p); err != nil {
+			utilruntime.HandleError(logger.LogError("reconciliation failed: %v", err))
+		}
+	}
+}
+
+func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
+	key, err := keyFunc(s)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	// Get plugin
+	storage, err := c.op.GetStorage(s.Spec.Type)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	obj, exists, err := c.nodeInf.GetStore().GetByKey(key)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	if !exists {
+		err := storage.DeleteNode(s)
+		if err != nil {
+			return logger.Err(err)
+		}
+
+		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.op.kclient)
+		if err != nil {
+			return logger.Err(err)
+		}
+
+		err = reaper.Stop(s.Namespace, s.Name, time.Minute, api.NewDeleteOptions(0))
+		if err != nil {
+			return logger.Err(err)
+		}
+
+		return nil
+	}
+
+	// Use the copy in the cache
+	s = obj.(*spec.StorageNode)
+
+	// DeepCopy CS
+	s, err = storageNodeDeepCopy(s)
+	if err != nil {
+		return err
+	}
+
+	deployClient := c.op.kclient.Extensions().Deployments(s.Namespace)
+	deployment := &extensions.Deployment{}
+	deployment.Namespace = s.Namespace
+	deployment.Name = s.Name
+	obj, exists, err = c.dsetInf.GetStore().Get(deployment)
+	if err != nil {
+		return logger.Err(err)
+	}
+
+	if !exists {
+		// Check if the deployment exists
+
+		// Get a deployment from plugin
+		deploy, err := storage.MakeDeployment(s, nil)
+		if err != nil {
+			return logger.Err(err)
+		}
+
+		if _, err := deployClient.Create(deploy); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return logger.LogError("unable to create deployment %v: %v",
+					deploy.GetName(), err)
+			}
+		}
+
+	} else if !s.Status.Added {
+		// Check if the StorageNode has been added
+
+		// Check if the deployment is ready
+		deploy := obj.(*extensions.Deployment)
+		if deploy.Spec.Replicas != deploy.Status.AvailableReplicas {
+			return nil
+		}
+
+		// Add node
+		updated, err := storage.AddNode(s)
+		if err != nil {
+			return logger.Err(err)
+		}
+		s.Status.Added = true
+
+		// Update node object
+		storagenodes := qmclient.NewStorageNodes(c.op.rclient, s.GetNamespace())
+		if updated != nil {
+			updated.Status.Added = true
+			_, err = storagenodes.Update(updated)
+			if err != nil {
+				return logger.Err(err)
+			}
+		} else {
+			_, err = storagenodes.Update(s)
+			if err != nil {
+				return logger.Err(err)
+			}
+
+		}
+
+	} else {
+		// Update deployment and driver
+
+		deploy, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
+		if err != nil {
+			return logger.Err(err)
+		}
+
+		// TODO(barakmich): This may be broken for DaemonSets.
+		// Will be fixed when DaemonSets do rolling updates.
+		if _, err := deployClient.Update(deploy); err != nil {
+			return logger.Err(err)
+		}
+
+		// Update Node
+		_, err = storage.UpdateNode(s)
+		if err != nil {
+			return logger.Err(err)
+		}
+	}
+
+	return nil
 }
