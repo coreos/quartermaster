@@ -88,6 +88,7 @@ func (s *StorageNodeOperator) Setup(stopc <-chan struct{}) error {
 
 	go s.nodeInf.Run(stopc)
 	go s.dsetInf.Run(stopc)
+	go s.worker()
 	go func() {
 		<-stopc
 		close(s.events)
