@@ -42,11 +42,10 @@ func NewStorageNodeOperator(op *Operator) StorageOperator {
 		op:     op,
 		events: make(chan *spec.StorageNode, 200),
 		nodeInf: cache.NewSharedIndexInformer(
-			NewStorageNodeListWatch(op.GetRESTClient()),
+			NewStorageNodeListWatch(op.rclient),
 			&spec.StorageNode{}, resyncPeriod, cache.Indexers{}),
 		dsetInf: cache.NewSharedIndexInformer(
-			cache.NewListWatchFromClient(op.GetRESTClient(),
-				"deployments", api.NamespaceAll, nil),
+			cache.NewListWatchFromClient(op.kclient.Extensions().RESTClient(), "deployments", api.NamespaceAll, nil),
 			&extensions.Deployment{}, resyncPeriod, cache.Indexers{}),
 	}
 }
