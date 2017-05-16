@@ -103,6 +103,8 @@ func (c *Operator) GetStorage(name spec.StorageTypeIdentifier) (qmstorage.Storag
 func (c *Operator) Run(stopc <-chan struct{}) error {
 	defer c.queue.close()
 
+	go c.worker()
+
 	// Test communication with server
 	v, err := c.kclient.Discovery().ServerVersion()
 	if err != nil {
@@ -152,6 +154,17 @@ func (q *queue) pop() (*spec.StorageNode, bool) {
 }
 
 var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
+
+// worker runs a worker thread that just dequeues items, processes them, and marks them done.
+// It enforces that the syncHandler is never invoked concurrently with the same key.
+func (c *Operator) worker() {
+	for {
+		_, ok := c.queue.pop()
+		if !ok {
+			return
+		}
+	}
+}
 
 func (c *Operator) GetRESTClient() *restclient.RESTClient {
 	return c.rclient

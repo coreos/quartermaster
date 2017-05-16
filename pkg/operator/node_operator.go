@@ -32,7 +32,6 @@ import (
 
 type StorageNodeOperator struct {
 	op      *Operator
-	queue   *queue
 	events  chan *spec.StorageNode
 	nodeInf cache.SharedIndexInformer
 	dsetInf cache.SharedIndexInformer
@@ -98,7 +97,7 @@ func (s *StorageNodeOperator) Setup(stopc <-chan struct{}) error {
 }
 
 func (c *StorageNodeOperator) enqueueStorageNode(p interface{}) {
-	c.queue.add(p.(*spec.StorageNode))
+	c.op.queue.add(p.(*spec.StorageNode))
 }
 
 func (c *StorageNodeOperator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
@@ -167,15 +166,9 @@ func (s *StorageNodeOperator) HasSynced() bool {
 	return s.nodeInf.HasSynced() && s.dsetInf.HasSynced()
 }
 
-// worker runs a worker thread that just dequeues items, processes them, and marks them done.
-// It enforces that the syncHandler is never invoked concurrently with the same key.
 func (c *StorageNodeOperator) worker() {
-	for {
-		p, ok := c.queue.pop()
-		if !ok {
-			return
-		}
-		if err := c.reconcile(p); err != nil {
+	for event := range c.events {
+		if err := c.reconcile(event); err != nil {
 			utilruntime.HandleError(logger.LogError("reconciliation failed: %v", err))
 		}
 	}
