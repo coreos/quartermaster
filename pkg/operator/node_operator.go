@@ -298,3 +298,15 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 
 	return nil
 }
+
+func storageNodeDeepCopy(ns *spec.StorageNode) (*spec.StorageNode, error) {
+	objCopy, err := api.Scheme.DeepCopy(ns)
+	if err != nil {
+		return nil, err
+	}
+	copied, ok := objCopy.(*spec.StorageNode)
+	if !ok {
+		return nil, logger.LogError("expected StorageNode, got %#v", objCopy)
+	}
+	return copied, nil
+}
