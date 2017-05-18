@@ -95,25 +95,25 @@ func (s *StorageNodeOperator) Setup(stopc <-chan struct{}) error {
 	return nil
 }
 
-func (c *StorageNodeOperator) enqueueStorageNode(p interface{}) {
-	c.op.queue.add(p.(*spec.StorageNode))
+func (s *StorageNodeOperator) enqueueStorageNode(p interface{}) {
+	s.op.queue.add(p.(*spec.StorageNode))
 }
 
-func (c *StorageNodeOperator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
-	cache.ListAll(c.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
+func (s *StorageNodeOperator) enqueueStorageNodeIf(f func(p *spec.StorageNode) bool) {
+	cache.ListAll(s.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
 		if f(o.(*spec.StorageNode)) {
-			c.enqueueStorageNode(o.(*spec.StorageNode))
+			s.enqueueStorageNode(o.(*spec.StorageNode))
 		}
 	})
 }
 
-func (c *StorageNodeOperator) enqueueAll() {
-	cache.ListAll(c.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
-		c.enqueueStorageNode(o.(*spec.StorageNode))
+func (s *StorageNodeOperator) enqueueAll() {
+	cache.ListAll(s.nodeInf.GetStore(), labels.Everything(), func(o interface{}) {
+		s.enqueueStorageNode(o.(*spec.StorageNode))
 	})
 }
 
-func (c *StorageNodeOperator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
+func (s *StorageNodeOperator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
 	key, err := keyFunc(d)
 	if err != nil {
 		utilruntime.HandleError(logger.LogError("error creating key: %v", err))
@@ -121,7 +121,7 @@ func (c *StorageNodeOperator) storageNodeForDeployment(d *extensions.Deployment)
 	}
 
 	// Namespace/Name are one-to-one so the key will find the respective StorageNode resource.
-	s, exists, err := c.nodeInf.GetStore().GetByKey(key)
+	ss, exists, err := s.nodeInf.GetStore().GetByKey(key)
 	if err != nil {
 		utilruntime.HandleError(logger.LogError("error getting storage node resource: %v", err))
 		return nil
@@ -129,24 +129,24 @@ func (c *StorageNodeOperator) storageNodeForDeployment(d *extensions.Deployment)
 	if !exists {
 		return nil
 	}
-	return s.(*spec.StorageNode)
+	return ss.(*spec.StorageNode)
 }
 
-func (c *StorageNodeOperator) deleteDeployment(o interface{}) {
+func (s *StorageNodeOperator) deleteDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
-	if s := c.storageNodeForDeployment(d); s != nil {
-		c.enqueueStorageNode(s)
+	if sn := s.storageNodeForDeployment(d); s != nil {
+		s.enqueueStorageNode(sn)
 	}
 }
 
-func (c *StorageNodeOperator) addDeployment(o interface{}) {
+func (s *StorageNodeOperator) addDeployment(o interface{}) {
 	d := o.(*extensions.Deployment)
-	if s := c.storageNodeForDeployment(d); s != nil {
-		c.enqueueStorageNode(s)
+	if sn := s.storageNodeForDeployment(d); s != nil {
+		s.enqueueStorageNode(sn)
 	}
 }
 
-func (c *StorageNodeOperator) updateDeployment(oldo, curo interface{}) {
+func (s *StorageNodeOperator) updateDeployment(oldo, curo interface{}) {
 	old := oldo.(*extensions.Deployment)
 	cur := curo.(*extensions.Deployment)
 
@@ -156,8 +156,8 @@ func (c *StorageNodeOperator) updateDeployment(oldo, curo interface{}) {
 		return
 	}
 
-	if s := c.storageNodeForDeployment(cur); s != nil {
-		c.enqueueStorageNode(s)
+	if sn := s.storageNodeForDeployment(cur); s != nil {
+		s.enqueueStorageNode(sn)
 	}
 }
 
@@ -165,43 +165,43 @@ func (s *StorageNodeOperator) HasSynced() bool {
 	return s.nodeInf.HasSynced() && s.dsetInf.HasSynced()
 }
 
-func (c *StorageNodeOperator) worker() {
-	for event := range c.events {
-		if err := c.reconcile(event); err != nil {
+func (s *StorageNodeOperator) worker() {
+	for event := range s.events {
+		if err := s.reconcile(event); err != nil {
 			utilruntime.HandleError(logger.LogError("reconciliation failed: %v", err))
 		}
 	}
 }
 
-func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
-	key, err := keyFunc(s)
+func (s *StorageNodeOperator) reconcile(sn *spec.StorageNode) error {
+	key, err := keyFunc(sn)
 	if err != nil {
 		return logger.Err(err)
 	}
 
 	// Get plugin
-	storage, err := c.op.GetStorage(s.Spec.Type)
+	storage, err := s.op.GetStorage(sn.Spec.Type)
 	if err != nil {
 		return logger.Err(err)
 	}
 
-	obj, exists, err := c.nodeInf.GetStore().GetByKey(key)
+	obj, exists, err := s.nodeInf.GetStore().GetByKey(key)
 	if err != nil {
 		return logger.Err(err)
 	}
 
 	if !exists {
-		err := storage.DeleteNode(s)
+		err := storage.DeleteNode(sn)
 		if err != nil {
 			return logger.Err(err)
 		}
 
-		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.op.kclient)
+		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), s.op.kclient)
 		if err != nil {
 			return logger.Err(err)
 		}
 
-		err = reaper.Stop(s.Namespace, s.Name, time.Minute, api.NewDeleteOptions(0))
+		err = reaper.Stop(sn.Namespace, sn.Name, time.Minute, api.NewDeleteOptions(0))
 		if err != nil {
 			return logger.Err(err)
 		}
@@ -210,19 +210,19 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 	}
 
 	// Use the copy in the cache
-	s = obj.(*spec.StorageNode)
+	sn = obj.(*spec.StorageNode)
 
 	// DeepCopy CS
-	s, err = storageNodeDeepCopy(s)
+	sn, err = storageNodeDeepCopy(sn)
 	if err != nil {
 		return err
 	}
 
-	deployClient := c.op.kclient.Extensions().Deployments(s.Namespace)
+	deployClient := s.op.kclient.Extensions().Deployments(sn.Namespace)
 	deployment := &extensions.Deployment{}
-	deployment.Namespace = s.Namespace
-	deployment.Name = s.Name
-	obj, exists, err = c.dsetInf.GetStore().Get(deployment)
+	deployment.Namespace = sn.Namespace
+	deployment.Name = sn.Name
+	obj, exists, err = s.dsetInf.GetStore().Get(deployment)
 	if err != nil {
 		return logger.Err(err)
 	}
@@ -231,7 +231,7 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 		// Check if the deployment exists
 
 		// Get a deployment from plugin
-		deploy, err := storage.MakeDeployment(s, nil)
+		deploy, err := storage.MakeDeployment(sn, nil)
 		if err != nil {
 			return logger.Err(err)
 		}
@@ -243,7 +243,7 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 			}
 		}
 
-	} else if !s.Status.Added {
+	} else if !sn.Status.Added {
 		// Check if the StorageNode has been added
 
 		// Check if the deployment is ready
@@ -253,14 +253,14 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 		}
 
 		// Add node
-		updated, err := storage.AddNode(s)
+		updated, err := storage.AddNode(sn)
 		if err != nil {
 			return logger.Err(err)
 		}
-		s.Status.Added = true
+		sn.Status.Added = true
 
 		// Update node object
-		storagenodes := qmclient.NewStorageNodes(c.op.rclient, s.GetNamespace())
+		storagenodes := qmclient.NewStorageNodes(s.op.rclient, sn.GetNamespace())
 		if updated != nil {
 			updated.Status.Added = true
 			_, err = storagenodes.Update(updated)
@@ -268,7 +268,7 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 				return logger.Err(err)
 			}
 		} else {
-			_, err = storagenodes.Update(s)
+			_, err = storagenodes.Update(sn)
 			if err != nil {
 				return logger.Err(err)
 			}
@@ -278,7 +278,7 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 	} else {
 		// Update deployment and driver
 
-		deploy, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
+		deploy, err := storage.MakeDeployment(sn, obj.(*extensions.Deployment))
 		if err != nil {
 			return logger.Err(err)
 		}
@@ -290,7 +290,7 @@ func (c *StorageNodeOperator) reconcile(s *spec.StorageNode) error {
 		}
 
 		// Update Node
-		_, err = storage.UpdateNode(s)
+		_, err = storage.UpdateNode(sn)
 		if err != nil {
 			return logger.Err(err)
 		}
