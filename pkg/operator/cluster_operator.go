@@ -21,12 +21,12 @@ import (
 	qmclient "github.com/coreos/quartermaster/pkg/client"
 	"github.com/coreos/quartermaster/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/client/cache"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/pkg/api"
+	"k8s.io/client-go/tools/cache"
 	hashutil "k8s.io/kubernetes/pkg/util/hash"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 type StorageOperator interface {
@@ -229,7 +229,7 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) error {
 	ns_client := qmclient.NewStorageNodes(s.op.GetRESTClient(), cs.Namespace)
 
 	// Create a reference object
-	clusterRef, err := api.GetReference(cs)
+	clusterRef, err := api.GetReference(api.Scheme, cs)
 	if err != nil {
 		return logger.Err(err)
 	}
@@ -243,11 +243,11 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) error {
 
 		// Setup StorageNode object
 		node := &spec.StorageNode{
-			TypeMeta: unversioned.TypeMeta{
+			TypeMeta: meta.TypeMeta{
 				Kind:       "StorageNode",
 				APIVersion: cs.APIVersion,
 			},
-			ObjectMeta: api.ObjectMeta{
+			ObjectMeta: meta.ObjectMeta{
 				Name:      cs.Name + "-" + fmt.Sprintf("%d", storageNodeSpecHash),
 				Namespace: cs.Namespace,
 				Labels:    cs.GetLabels(),

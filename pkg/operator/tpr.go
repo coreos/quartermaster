@@ -15,9 +15,9 @@
 package operator
 
 import (
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/extensions"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 const (
@@ -44,36 +44,36 @@ var (
 )
 
 func (c *Operator) createTPRs() error {
-	tprs := []*extensions.ThirdPartyResource{
+	tprs := []*v1beta1.ThirdPartyResource{
 		{
-			ObjectMeta: api.ObjectMeta{
+			ObjectMeta: meta.ObjectMeta{
 				Name: tprStorageStatus,
 			},
-			Versions: []extensions.APIVersion{
+			Versions: []v1beta1.APIVersion{
 				{Name: TPRVersion},
 			},
 			Description: "Status reports from Quartermaster managed storage",
 		},
 		{
-			ObjectMeta: api.ObjectMeta{
+			ObjectMeta: meta.ObjectMeta{
 				Name: tprStorageNode,
 			},
-			Versions: []extensions.APIVersion{
+			Versions: []v1beta1.APIVersion{
 				{Name: TPRVersion},
 			},
 			Description: "Managed storage nodes via Quartermaster",
 		},
 		{
-			ObjectMeta: api.ObjectMeta{
+			ObjectMeta: meta.ObjectMeta{
 				Name: tprStorageCluster,
 			},
-			Versions: []extensions.APIVersion{
+			Versions: []v1beta1.APIVersion{
 				{Name: TPRVersion},
 			},
 			Description: "Managed storage clusters via Quartermaster",
 		},
 	}
-	tprClient := c.kclient.Extensions().ThirdPartyResources()
+	tprClient := c.kclient.ExtensionsV1beta1().ThirdPartyResources()
 	for _, tpr := range tprs {
 		_, err := tprClient.Create(tpr)
 		if apierrors.IsAlreadyExists(err) {

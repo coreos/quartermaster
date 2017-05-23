@@ -19,17 +19,17 @@
 package spec
 
 import (
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/unversioned"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/api"
 )
 
 // StorageNode defines a single instance of available storage on a
 // node and the appropriate options to apply to it to make it available
 // to the cluster.
 type StorageNode struct {
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
-	Spec                 StorageNodeSpec `json:"spec,omitempty"`
+	meta.TypeMeta   `json:",inline"`
+	meta.ObjectMeta `json:"metadata,omitempty"`
+	Spec            StorageNodeSpec `json:"spec,omitempty"`
 
 	// Status represents the current status of the storage node
 	// +optional
@@ -39,9 +39,9 @@ type StorageNode struct {
 // Third Party Resource object which contains all the necessary information
 // to deploy a storage cluster
 type StorageCluster struct {
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
-	Spec                 StorageClusterSpec `json:"spec,omitempty"`
+	meta.TypeMeta   `json:",inline"`
+	meta.ObjectMeta `json:"metadata,omitempty"`
+	Spec            StorageClusterSpec `json:"spec,omitempty"`
 
 	// Status represents the current status of the storage node
 	// +optional
@@ -50,16 +50,16 @@ type StorageCluster struct {
 
 // StorageNodeList is a list of StorageNode objects in Kubernetes.
 type StorageNodeList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
+	meta.TypeMeta `json:",inline"`
+	meta.ListMeta `json:"metadata,omitempty"`
 
 	Items []StorageNode `json:"items"`
 }
 
 // StorageClusterList is a list of StorageCluster objects in Kubernetes
 type StorageClusterList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
+	meta.TypeMeta `json:",inline"`
+	meta.ListMeta `json:"metadata,omitempty"`
 
 	Items []StorageCluster `json:"items"`
 }
@@ -169,9 +169,9 @@ type NFSStorageNode struct {
 }
 
 type StatusCondition struct {
-	Time    unversioned.Time `json:"time,omitempty"`
-	Message string           `json:"message,omitempty"`
-	Reason  string           `json:"reason,omitempty"`
+	Time    meta.Time `json:"time,omitempty"`
+	Message string    `json:"message,omitempty"`
+	Reason  string    `json:"reason,omitempty"`
 }
 
 type StatusInfo struct {

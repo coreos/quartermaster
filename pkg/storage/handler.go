@@ -17,7 +17,7 @@ package storage
 import (
 	"github.com/coreos/quartermaster/pkg/spec"
 	"github.com/lpabon/godbc"
-	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 // StorageHandlerFuncs insulates the implementation from unsupported
@@ -29,7 +29,7 @@ type StorageHandlerFuncs struct {
 	UpdateClusterFunc func(old *spec.StorageCluster, new *spec.StorageCluster) error
 	DeleteClusterFunc func(c *spec.StorageCluster) error
 
-	MakeDeploymentFunc func(n *spec.StorageNode, old *extensions.Deployment) (*extensions.Deployment, error)
+	MakeDeploymentFunc func(n *spec.StorageNode, old *v1beta1.Deployment) (*v1beta1.Deployment, error)
 	AddNodeFunc        func(n *spec.StorageNode) (*spec.StorageNode, error)
 	UpdateNodeFunc     func(n *spec.StorageNode) (*spec.StorageNode, error)
 	DeleteNodeFunc     func(n *spec.StorageNode) error
@@ -61,7 +61,7 @@ func (s StorageHandlerFuncs) DeleteCluster(c *spec.StorageCluster) error {
 }
 
 func (s StorageHandlerFuncs) MakeDeployment(n *spec.StorageNode,
-	old *extensions.Deployment) (*extensions.Deployment, error) {
+	old *v1beta1.Deployment) (*v1beta1.Deployment, error) {
 	if s.MakeDeploymentFunc != nil {
 		return s.MakeDeploymentFunc(n, old)
 	}
