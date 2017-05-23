@@ -16,10 +16,11 @@ package glusterfs
 
 import (
 	"fmt"
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/extensions"
-	"k8s.io/kubernetes/pkg/util/intstr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 
 	heketiclient "github.com/heketi/heketi/client/api/go-client"
 )
@@ -36,7 +37,7 @@ func (st *GlusterStorage) heketiClient(namespace string) (*heketiclient.Client, 
 }
 
 func (st *GlusterStorage) getHeketiAddress(namespace string) (string, error) {
-	service, err := st.client.Core().Services(namespace).Get("heketi")
+	service, err := st.client.Core().Services(namespace).Get("heketi", meta.GetOptions{})
 	if err != nil {
 		return "", logger.LogError("Failed to get cluster ip from Heketi service: %v", err)
 	}
@@ -73,8 +74,9 @@ func (st *GlusterStorage) deployHeketi(namespace string) error {
 func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 
 	// Deployment for Heketi
-	d := &extensions.Deployment{
-		ObjectMeta: api.ObjectMeta{
+	replicas := int32(1)
+	d := &v1beta1.Deployment{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "heketi",
 			Namespace: namespace,
 			Annotations: map[string]string{
@@ -86,10 +88,10 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 				"quartermaster": "heketi",
 			},
 		},
-		Spec: extensions.DeploymentSpec{
-			Replicas: 1,
-			Template: api.PodTemplateSpec{
-				ObjectMeta: api.ObjectMeta{
+		Spec: v1beta1.DeploymentSpec{
+			Replicas: &replicas,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: meta.ObjectMeta{
 					Labels: map[string]string{"glusterfs": "heketi-deployment",
 						"heketi":        "heketi-deployment",
 						"quartermaster": "heketi",
@@ -97,43 +99,43 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 					},
 					Name: "heketi",
 				},
-				Spec: api.PodSpec{
+				Spec: v1.PodSpec{
 					ServiceAccountName: "heketi-service-account",
-					Containers: []api.Container{
-						api.Container{
+					Containers: []v1.Container{
+						v1.Container{
 							Name:            "heketi",
 							Image:           "heketi/heketi:dev",
-							ImagePullPolicy: api.PullIfNotPresent,
-							Env: []api.EnvVar{
-								api.EnvVar{
+							ImagePullPolicy: v1.PullIfNotPresent,
+							Env: []v1.EnvVar{
+								v1.EnvVar{
 									Name:  "HEKETI_EXECUTOR",
 									Value: "kubernetes",
 								},
-								api.EnvVar{
+								v1.EnvVar{
 									Name:  "HEKETI_FSTAB",
 									Value: "/var/lib/heketi/fstab",
 								},
-								api.EnvVar{
+								v1.EnvVar{
 									Name:  "HEKETI_SNAPSHOT_LIMIT",
 									Value: "14",
 								},
 							},
-							Ports: []api.ContainerPort{
-								api.ContainerPort{
+							Ports: []v1.ContainerPort{
+								v1.ContainerPort{
 									ContainerPort: 8080,
 								},
 							},
-							VolumeMounts: []api.VolumeMount{
-								api.VolumeMount{
+							VolumeMounts: []v1.VolumeMount{
+								v1.VolumeMount{
 									Name:      "db",
 									MountPath: "/var/lib/heketi",
 								},
 							},
-							ReadinessProbe: &api.Probe{
+							ReadinessProbe: &v1.Probe{
 								TimeoutSeconds:      3,
 								InitialDelaySeconds: 3,
-								Handler: api.Handler{
-									HTTPGet: &api.HTTPGetAction{
+								Handler: v1.Handler{
+									HTTPGet: &v1.HTTPGetAction{
 										Path: "/hello",
 										Port: intstr.IntOrString{
 											IntVal: 8080,
@@ -141,11 +143,11 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 									},
 								},
 							},
-							LivenessProbe: &api.Probe{
+							LivenessProbe: &v1.Probe{
 								TimeoutSeconds:      3,
 								InitialDelaySeconds: 30,
-								Handler: api.Handler{
-									HTTPGet: &api.HTTPGetAction{
+								Handler: v1.Handler{
+									HTTPGet: &v1.HTTPGetAction{
 										Path: "/hello",
 										Port: intstr.IntOrString{
 											IntVal: 8080,
@@ -155,8 +157,8 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 							},
 						},
 					},
-					Volumes: []api.Volume{
-						api.Volume{
+					Volumes: []v1.Volume{
+						v1.Volume{
 							Name: "db",
 						},
 					},
@@ -174,7 +176,7 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 	}
 
 	// Wait until deployment ready
-	err = waitForDeploymentFn(st.client, namespace, d.GetName(), d.Spec.Replicas)
+	err = waitForDeploymentFn(st.client, namespace, d.GetName(), *d.Spec.Replicas)
 	if err != nil {
 		return logger.Err(err)
 	}
@@ -184,8 +186,8 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 }
 
 func (st *GlusterStorage) deployHeketiServiceAccount(namespace string) error {
-	s := &api.ServiceAccount{
-		ObjectMeta: api.ObjectMeta{
+	s := &v1.ServiceAccount{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "heketi-service-account",
 			Namespace: namespace,
 		},
@@ -205,8 +207,8 @@ func (st *GlusterStorage) deployHeketiServiceAccount(namespace string) error {
 }
 
 func (st *GlusterStorage) deployHeketiService(namespace string) error {
-	s := &api.Service{
-		ObjectMeta: api.ObjectMeta{
+	s := &v1.Service{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "heketi",
 			Namespace: namespace,
 			Labels: map[string]string{
@@ -217,12 +219,12 @@ func (st *GlusterStorage) deployHeketiService(namespace string) error {
 				"description": "Exposes Heketi Service",
 			},
 		},
-		Spec: api.ServiceSpec{
+		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
 				"name": "heketi",
 			},
-			Ports: []api.ServicePort{
-				api.ServicePort{
+			Ports: []v1.ServicePort{
+				v1.ServicePort{
 					Name: "heketi",
 					Port: 8080,
 					TargetPort: intstr.IntOrString{
