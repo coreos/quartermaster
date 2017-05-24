@@ -3,9 +3,7 @@ before_install:
   - mkdir $GOPATH/bin
 install:
   - go get -v github.com/Masterminds/glide
-  - which glide
-  - glide cc
-  - glide --debug install -v
+  - glide --debug --home $GOPATH/.glide install -v
 matrix:
   include:
   - go: 1.7.5
