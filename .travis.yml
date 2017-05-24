@@ -3,6 +3,7 @@ before_install:
   - mkdir $GOPATH/bin
 install:
   - go get -v github.com/Masterminds/glide
+  - cat glide.yaml
   - glide --debug --home $GOPATH/.glide install -v
 matrix:
   include:
