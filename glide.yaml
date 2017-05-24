@@ -1,8 +1,8 @@
 package: github.com/coreos/quartermaster
 import:
 - package: github.com/heketi/heketi
-  repo: https://github.com/lpabon/heketi.git
-  version: glidedep
+  repo: github.com/lpabon/heketi
+  version: 04cf4bbced8e0835c31d1e3e397805eff3bd24c4
   subpackages:
   - pkg/heketitest
   - pkg/glusterfs/api
