@@ -22,23 +22,24 @@ import (
 	qmstorage "github.com/coreos/quartermaster/pkg/storage"
 	"github.com/heketi/utils"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/extensions"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/util/intstr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	restclient "k8s.io/client-go/rest"
 )
 
 var (
 	logger              = utils.NewLogger("swift", utils.LEVEL_DEBUG)
-	waitForDeploymentFn = func(client clientset.Interface, namespace, name string, available int32) error {
+	waitForDeploymentFn = func(client kubernetes.Interface, namespace, name string, available int32) error {
 		return operator.WaitForDeploymentReady(client, namespace, name, available)
 	}
 )
 
 // This mock storage system serves as an example driver for developers
-func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
+func New(client kubernetes.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
 	s := &SwiftStorage{
 		client: client,
 		qm:     qm,
@@ -95,7 +96,7 @@ func New(client clientset.Interface, qm restclient.Interface) (qmstorage.Storage
 }
 
 type SwiftStorage struct {
-	client clientset.Interface
+	client kubernetes.Interface
 	qm     restclient.Interface
 }
 
@@ -152,13 +153,13 @@ func (st *SwiftStorage) DeleteCluster(c *spec.StorageCluster) error {
 	deployments := st.client.Extensions().Deployments(c.Namespace)
 	orphanDependents := false
 	err = deployments.Delete("swift-proxy-deploy",
-		&api.DeleteOptions{OrphanDependents: &orphanDependents})
+		&meta.DeleteOptions{OrphanDependents: &orphanDependents})
 	if err != nil {
 		return err
 	}
 
 	err = deployments.Delete("swift-ring-master-deploy",
-		&api.DeleteOptions{OrphanDependents: &orphanDependents})
+		&meta.DeleteOptions{OrphanDependents: &orphanDependents})
 	if err != nil {
 		return err
 	}
@@ -173,7 +174,7 @@ func (st *SwiftStorage) DeleteCluster(c *spec.StorageCluster) error {
 }
 
 func (st *SwiftStorage) MakeDeployment(s *spec.StorageNode,
-	old *extensions.Deployment) (*extensions.Deployment, error) {
+	old *v1beta1.Deployment) (*v1beta1.Deployment, error) {
 
 	logger.Debug("Make deployment for node %v", s.GetName())
 	if s.Spec.Image == "" {
@@ -188,8 +189,8 @@ func (st *SwiftStorage) MakeDeployment(s *spec.StorageNode,
 		lmap[k] = v
 	}
 	lmap["quartermaster"] = s.Name
-	deployment := &extensions.Deployment{
-		ObjectMeta: api.ObjectMeta{
+	deployment := &v1beta1.Deployment{
+		ObjectMeta: meta.ObjectMeta{
 			Name:        s.Name,
 			Namespace:   s.Namespace,
 			Annotations: s.Annotations,
@@ -203,63 +204,64 @@ func (st *SwiftStorage) MakeDeployment(s *spec.StorageNode,
 	return deployment, nil
 }
 
-func (st *SwiftStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
+func (st *SwiftStorage) makeDeploymentSpec(s *spec.StorageNode) (*v1beta1.DeploymentSpec, error) {
 
-	volumes := []api.Volume{
-		api.Volume{
+	volumes := []v1.Volume{
+		v1.Volume{
 			Name: "swift-storage-etc",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: "/var/lib/swift_storage/etc",
 				},
 			},
 		},
 	}
 
-	mounts := []api.VolumeMount{
-		api.VolumeMount{
+	mounts := []v1.VolumeMount{
+		v1.VolumeMount{
 			Name:      "swift-storage-etc",
 			MountPath: "/etc/swift",
 		},
 	}
-	spec := &extensions.DeploymentSpec{
-		Replicas: 1,
-		Template: api.PodTemplateSpec{
-			ObjectMeta: api.ObjectMeta{
+	replicas := int32(1)
+	spec := &v1beta1.DeploymentSpec{
+		Replicas: &replicas,
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: meta.ObjectMeta{
 				Labels: map[string]string{
 					// Drivers *should* add a quartermaster label
 					"quartermaster": s.Name,
 					"swift_storage": s.GetName(),
 				},
 			},
-			Spec: api.PodSpec{
+			Spec: v1.PodSpec{
 				NodeName:     s.Spec.NodeName,
 				NodeSelector: s.Spec.NodeSelector,
-				Containers: []api.Container{
-					api.Container{
+				Containers: []v1.Container{
+					v1.Container{
 						Name:            s.Name,
 						Image:           s.Spec.Image,
-						ImagePullPolicy: api.PullIfNotPresent,
+						ImagePullPolicy: v1.PullIfNotPresent,
 						VolumeMounts:    mounts,
-						Ports: []api.ContainerPort{
-							api.ContainerPort{
+						Ports: []v1.ContainerPort{
+							v1.ContainerPort{
 								// object server
 								ContainerPort: 6200,
 							},
-							api.ContainerPort{
+							v1.ContainerPort{
 								// container server
 								ContainerPort: 6201,
 							},
-							api.ContainerPort{
+							v1.ContainerPort{
 								// account server
 								ContainerPort: 6200,
 							},
 						},
 					},
-					api.Container{
+					v1.Container{
 						Name:            "swift-ring-minion",
 						Image:           "thiagodasilva/swift_ring_minion:dev-v5",
-						ImagePullPolicy: api.PullIfNotPresent,
+						ImagePullPolicy: v1.PullIfNotPresent,
 						VolumeMounts:    mounts,
 					},
 				},
@@ -272,8 +274,8 @@ func (st *SwiftStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Dep
 
 func (st *SwiftStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 	logger.Info("Adding node %v", s.GetName())
-	svc := &api.Service{
-		ObjectMeta: api.ObjectMeta{
+	svc := &v1.Service{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      s.GetName() + "-svc",
 			Namespace: s.Namespace,
 			Labels: map[string]string{
@@ -283,28 +285,28 @@ func (st *SwiftStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) 
 				"description": "Exposes Swift Storage Service",
 			},
 		},
-		Spec: api.ServiceSpec{
+		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
 				"swift_storage": s.GetName(),
 			},
 			ClusterIP: s.Spec.StorageNetwork.IPs[0],
-			Type:      api.ServiceTypeClusterIP,
-			Ports: []api.ServicePort{
-				api.ServicePort{
+			Type:      v1.ServiceTypeClusterIP,
+			Ports: []v1.ServicePort{
+				v1.ServicePort{
 					Name: "account",
 					Port: 6200,
 					TargetPort: intstr.IntOrString{
 						IntVal: 6200,
 					},
 				},
-				api.ServicePort{
+				v1.ServicePort{
 					Name: "container",
 					Port: 6201,
 					TargetPort: intstr.IntOrString{
 						IntVal: 6201,
 					},
 				},
-				api.ServicePort{
+				v1.ServicePort{
 					Name: "object",
 					Port: 6202,
 					TargetPort: intstr.IntOrString{
@@ -349,25 +351,27 @@ func (st *SwiftStorage) Type() spec.StorageTypeIdentifier {
 }
 
 func (st *SwiftStorage) deployProxy(namespace string) error {
-	volumes := []api.Volume{
-		api.Volume{
+	volumes := []v1.Volume{
+		v1.Volume{
 			Name: "swift-proxy-etc",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: "/var/lib/swift_proxy/etc",
 				},
 			},
 		},
 	}
 
-	mounts := []api.VolumeMount{
-		api.VolumeMount{
+	mounts := []v1.VolumeMount{
+		v1.VolumeMount{
 			Name:      "swift-proxy-etc",
 			MountPath: "/etc/swift",
 		},
 	}
-	proxyDeploy := &extensions.Deployment{
-		ObjectMeta: api.ObjectMeta{
+
+	replicas := int32(1)
+	proxyDeploy := &v1beta1.Deployment{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "swift-proxy-deploy",
 			Namespace: namespace,
 			Annotations: map[string]string{
@@ -378,33 +382,33 @@ func (st *SwiftStorage) deployProxy(namespace string) error {
 				"quartermaster": "swift",
 			},
 		},
-		Spec: extensions.DeploymentSpec{
-			Replicas: 1,
-			Template: api.PodTemplateSpec{
-				ObjectMeta: api.ObjectMeta{
+		Spec: v1beta1.DeploymentSpec{
+			Replicas: &replicas,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: meta.ObjectMeta{
 					Labels: map[string]string{
 						"swift":         "swift-proxy",
 						"quartermaster": "swift",
 					},
 					Name: "swift-proxy-pod",
 				},
-				Spec: api.PodSpec{
-					Containers: []api.Container{
-						api.Container{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						v1.Container{
 							Name:            "swift-proxy",
 							Image:           "thiagodasilva/swift-proxy:dev-v1",
-							ImagePullPolicy: api.PullIfNotPresent,
+							ImagePullPolicy: v1.PullIfNotPresent,
 							VolumeMounts:    mounts,
-							Ports: []api.ContainerPort{
-								api.ContainerPort{
+							Ports: []v1.ContainerPort{
+								v1.ContainerPort{
 									ContainerPort: 8080,
 								},
 							},
 						},
-						api.Container{
+						v1.Container{
 							Name:            "swift-ring-minion",
 							Image:           "thiagodasilva/swift_ring_minion:dev-v5",
-							ImagePullPolicy: api.PullIfNotPresent,
+							ImagePullPolicy: v1.PullIfNotPresent,
 							VolumeMounts:    mounts,
 						},
 					},
@@ -424,7 +428,7 @@ func (st *SwiftStorage) deployProxy(namespace string) error {
 
 	// Wait until deployment ready
 	err = waitForDeploymentFn(st.client, namespace, proxyDeploy.GetName(),
-		proxyDeploy.Spec.Replicas)
+		*proxyDeploy.Spec.Replicas)
 	if err != nil {
 		return logger.Err(err)
 	}
@@ -434,8 +438,8 @@ func (st *SwiftStorage) deployProxy(namespace string) error {
 }
 
 func (st *SwiftStorage) deploySwiftProxyService(namespace string) error {
-	s := &api.Service{
-		ObjectMeta: api.ObjectMeta{
+	s := &v1.Service{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "swiftservice",
 			Namespace: namespace,
 			Labels: map[string]string{
@@ -445,13 +449,13 @@ func (st *SwiftStorage) deploySwiftProxyService(namespace string) error {
 				"description": "Exposes Swift Proxy Service",
 			},
 		},
-		Spec: api.ServiceSpec{
+		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
 				"swift": "swift-proxy",
 			},
-			Type: api.ServiceTypeNodePort,
-			Ports: []api.ServicePort{
-				api.ServicePort{
+			Type: v1.ServiceTypeNodePort,
+			Ports: []v1.ServicePort{
+				v1.ServicePort{
 					Port: 8080,
 					TargetPort: intstr.IntOrString{
 						IntVal: 8080,
@@ -482,14 +486,14 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 		return err
 	}
 
-	volumes := []api.Volume{
-		api.Volume{
+	volumes := []v1.Volume{
+		v1.Volume{
 			Name: "config-swift-cluster",
-			VolumeSource: api.VolumeSource{
-				ConfigMap: &api.ConfigMapVolumeSource{
-					LocalObjectReference: api.LocalObjectReference{
+			VolumeSource: v1.VolumeSource{
+				ConfigMap: &v1.ConfigMapVolumeSource{
+					LocalObjectReference: v1.LocalObjectReference{
 						Name: "swift-cluster-configmap"},
-					Items: []api.KeyToPath{{
+					Items: []v1.KeyToPath{{
 						Key:  "cluster.json",
 						Path: "cluster_topology.json",
 					}},
@@ -498,15 +502,16 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 		},
 	}
 
-	mounts := []api.VolumeMount{
-		api.VolumeMount{
+	mounts := []v1.VolumeMount{
+		v1.VolumeMount{
 			Name:      "config-swift-cluster",
 			MountPath: "/etc/swift_config",
 		},
 	}
 
-	ringMasterDeploy := &extensions.Deployment{
-		ObjectMeta: api.ObjectMeta{
+	replicas := int32(1)
+	ringMasterDeploy := &v1beta1.Deployment{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "swift-ring-master-deploy",
 			Namespace: c.Namespace,
 			Annotations: map[string]string{
@@ -517,25 +522,25 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 				"quartermaster": "swift",
 			},
 		},
-		Spec: extensions.DeploymentSpec{
-			Replicas: 1,
-			Template: api.PodTemplateSpec{
-				ObjectMeta: api.ObjectMeta{
+		Spec: v1beta1.DeploymentSpec{
+			Replicas: &replicas,
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: meta.ObjectMeta{
 					Labels: map[string]string{
 						"swift":         "swift-ring-master",
 						"quartermaster": "swift",
 					},
 					Name: "swift-ring-master-pod",
 				},
-				Spec: api.PodSpec{
-					Containers: []api.Container{
-						api.Container{
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						v1.Container{
 							Name:            "swift-ring-master",
 							Image:           "thiagodasilva/swift_ring_master:dev-v1",
-							ImagePullPolicy: api.PullIfNotPresent,
+							ImagePullPolicy: v1.PullIfNotPresent,
 							VolumeMounts:    mounts,
-							Ports: []api.ContainerPort{
-								api.ContainerPort{
+							Ports: []v1.ContainerPort{
+								v1.ContainerPort{
 									ContainerPort: 8090,
 								},
 							},
@@ -557,7 +562,7 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 
 	// Wait until deployment ready
 	err = waitForDeploymentFn(st.client, c.Namespace,
-		ringMasterDeploy.GetName(), ringMasterDeploy.Spec.Replicas)
+		ringMasterDeploy.GetName(), *ringMasterDeploy.Spec.Replicas)
 	if err != nil {
 		return logger.Err(err)
 	}
@@ -573,8 +578,8 @@ func (st *SwiftStorage) createRings(c *spec.StorageCluster) error {
 }
 
 func (st *SwiftStorage) deploySwiftRingMasterService(namespace string) error {
-	s := &api.Service{
-		ObjectMeta: api.ObjectMeta{
+	s := &v1.Service{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      "swift-ring-master-svc",
 			Namespace: namespace,
 			Labels: map[string]string{
@@ -584,14 +589,14 @@ func (st *SwiftStorage) deploySwiftRingMasterService(namespace string) error {
 				"description": "Exposes Swift Ring Master Service",
 			},
 		},
-		Spec: api.ServiceSpec{
+		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
 				"swift": "swift-ring-master",
 			},
 			ClusterIP: "10.96.0.248", //10.96.253.129
-			Type:      api.ServiceTypeClusterIP,
-			Ports: []api.ServicePort{
-				api.ServicePort{
+			Type:      v1.ServiceTypeClusterIP,
+			Ports: []v1.ServicePort{
+				v1.ServicePort{
 					Port: 8090,
 					TargetPort: intstr.IntOrString{
 						IntVal: 8090,
@@ -617,8 +622,8 @@ func (st *SwiftStorage) deploySwiftRingMasterService(namespace string) error {
 
 func (st *SwiftStorage) createConfigMap(c *spec.StorageCluster) error {
 	cluster, _ := json.Marshal(c)
-	clusterConfMap := &api.ConfigMap{
-		ObjectMeta: api.ObjectMeta{
+	clusterConfMap := &v1.ConfigMap{
+		ObjectMeta: meta.ObjectMeta{
 			Name: "swift-cluster-configmap",
 		},
 		Data: map[string]string{

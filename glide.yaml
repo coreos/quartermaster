@@ -1,7 +1,8 @@
 package: github.com/coreos/quartermaster
 import:
 - package: github.com/heketi/heketi
-  version: 9a70d23952f5acbb932ce45c91e3afe4325c2eb0
+  repo: github.com/lpabon/heketi
+  version: 04cf4bbced8e0835c31d1e3e397805eff3bd24c4
   subpackages:
   - pkg/heketitest
   - pkg/glusterfs/api
@@ -9,28 +10,5 @@ import:
   version: 435bc5bdfa64550e867cd7ef0b9181adc02b88d2
 - package: github.com/heketi/tests
   version: f3775cbcefd6822086c729e3ce4b70ca85a5bd21
-- package: k8s.io/kubernetes
-  version: v1.5.4
-  subpackages:
-  - pkg/api
-  - pkg/api/errors
-  - pkg/api/unversioned
-  - pkg/api/v1
-  - pkg/apis/extensions
-  - pkg/apis/extensions/v1beta1
-  - pkg/api/meta
-  - pkg/client/cache
-  - pkg/client/clientset_generated/internalclientset
-  - pkg/client/restclient
-  - pkg/kubectl
-  - pkg/labels
-  - pkg/runtime
-  - pkg/runtime/serializer
-  - pkg/util/runtime
-  - pkg/util/wait
-  - pkg/watch
-- package: github.com/lpabon/godbc
-- package: golang.org/x/crypto
-  subpackages:
-  - ssh
-  - ssh/agent
+- package: k8s.io/client-go
+  version: v3.0.0-beta.0
