@@ -4,6 +4,7 @@ before_install:
 install:
   - curl https://glide.sh/get | sh
   - glide install -v
+  - which glide
 matrix:
   include:
   - go: 1.7.5
