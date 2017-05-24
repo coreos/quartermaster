@@ -5,7 +5,7 @@ install:
   - go get -v github.com/Masterminds/glide
   - which glide
   - glide cc
-  - glide install -v
+  - glide --debug install -v
 matrix:
   include:
   - go: 1.7.5
