@@ -23,13 +23,14 @@ import (
 	qmstorage "github.com/coreos/quartermaster/pkg/storage"
 	"github.com/heketi/utils"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/resource"
-	"k8s.io/kubernetes/pkg/apis/extensions"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/util/intstr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	restclient "k8s.io/client-go/rest"
 )
 
 var (
@@ -37,11 +38,11 @@ var (
 )
 
 type NfsStorage struct {
-	client clientset.Interface
+	client kubernetes.Interface
 	qm     restclient.Interface
 }
 
-func New(client clientset.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
+func New(client kubernetes.Interface, qm restclient.Interface) (qmstorage.StorageType, error) {
 	s := &NfsStorage{
 		client: client,
 		qm:     qm,
@@ -64,7 +65,7 @@ func (st *NfsStorage) Init() error {
 }
 
 func (st *NfsStorage) MakeDeployment(s *spec.StorageNode,
-	old *extensions.Deployment) (*extensions.Deployment, error) {
+	old *v1beta1.Deployment) (*v1beta1.Deployment, error) {
 
 	if s.Spec.Image == "" {
 		s.Spec.Image = "quay.io/luis_pabon0/ganesha:latest"
@@ -78,8 +79,8 @@ func (st *NfsStorage) MakeDeployment(s *spec.StorageNode,
 		lmap[k] = v
 	}
 	lmap["quartermaster"] = s.Name
-	deployment := &extensions.Deployment{
-		ObjectMeta: api.ObjectMeta{
+	deployment := &v1beta1.Deployment{
+		ObjectMeta: meta.ObjectMeta{
 			Name:        s.Name,
 			Namespace:   s.Namespace,
 			Annotations: s.Annotations,
@@ -98,35 +99,36 @@ func dashifyPath(s string) string {
 	return strings.Replace(s, "/", "-", -1)
 }
 
-func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
+func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*v1beta1.DeploymentSpec, error) {
 	if len(s.Spec.Devices) != 0 {
 		return nil, fmt.Errorf("NFS does not support raw device access")
 	}
-	var volumes []api.Volume
-	var mounts []api.VolumeMount
+	var volumes []v1.Volume
+	var mounts []v1.VolumeMount
 
 	for _, path := range s.Spec.Directories {
 		dash := dashifyPath(path)
-		volumes = append(volumes, api.Volume{
+		volumes = append(volumes, v1.Volume{
 			Name: dash,
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: path,
 				},
 			},
 		})
-		mounts = append(mounts, api.VolumeMount{
+		mounts = append(mounts, v1.VolumeMount{
 			Name:      dash,
 			MountPath: path,
 		})
 	}
 
 	privileged := true
+	replicas := int32(1)
 
-	spec := &extensions.DeploymentSpec{
-		Replicas: 1,
-		Template: api.PodTemplateSpec{
-			ObjectMeta: api.ObjectMeta{
+	spec := &v1beta1.DeploymentSpec{
+		Replicas: &replicas,
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: meta.ObjectMeta{
 				Labels: map[string]string{
 					"name":             s.Name,
 					"nfs-ganesha-node": s.Name,
@@ -134,33 +136,33 @@ func (st *NfsStorage) makeDeploymentSpec(s *spec.StorageNode) (*extensions.Deplo
 				},
 				Name: s.Name,
 			},
-			Spec: api.PodSpec{
+			Spec: v1.PodSpec{
 				NodeName:     s.Spec.NodeName,
 				NodeSelector: s.Spec.NodeSelector,
-				Containers: []api.Container{
-					api.Container{
+				Containers: []v1.Container{
+					v1.Container{
 						Name:            s.Name,
 						Image:           s.Spec.Image,
-						ImagePullPolicy: api.PullIfNotPresent,
+						ImagePullPolicy: v1.PullIfNotPresent,
 						VolumeMounts:    mounts,
-						SecurityContext: &api.SecurityContext{
+						SecurityContext: &v1.SecurityContext{
 							Privileged: &privileged,
 						},
 
-						Ports: []api.ContainerPort{
-							api.ContainerPort{
+						Ports: []v1.ContainerPort{
+							v1.ContainerPort{
 								Name:          "nfs",
 								ContainerPort: 2049,
 								//TODO(barakmich)
 								// HostIP: <get IP from spec>
 							},
-							api.ContainerPort{
+							v1.ContainerPort{
 								Name:          "mountd",
 								ContainerPort: 20048,
 								//TODO(barakmich)
 								// HostIP: <get IP from spec>
 							},
-							api.ContainerPort{
+							v1.ContainerPort{
 								Name:          "rpcbind",
 								ContainerPort: 111,
 								//TODO(barakmich)
@@ -246,7 +248,7 @@ func (st *NfsStorage) Type() spec.StorageTypeIdentifier {
 func (st *NfsStorage) deployPv(s *spec.StorageNode) error {
 
 	// Get IP to service
-	service, err := st.client.Core().Services(s.GetNamespace()).Get(s.GetName())
+	service, err := st.client.Core().Services(s.GetNamespace()).Get(s.GetName(), meta.GetOptions{})
 	if err != nil {
 		return logger.LogError("Failed to get network address from service %v/%v: %v",
 			s.GetNamespace(), s.GetName(), err)
@@ -268,23 +270,23 @@ func (st *NfsStorage) deployPv(s *spec.StorageNode) error {
 	}
 
 	// Create persistent volume
-	pv := &api.PersistentVolume{
-		ObjectMeta: api.ObjectMeta{
+	pv := &v1.PersistentVolume{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      s.GetName(),
 			Namespace: s.GetNamespace(),
 			Annotations: map[string]string{
 				"description": "Exposes NFS Service",
 			},
 		},
-		Spec: api.PersistentVolumeSpec{
-			Capacity: api.ResourceList{
-				api.ResourceName(api.ResourceStorage): resource.MustParse(size),
+		Spec: v1.PersistentVolumeSpec{
+			Capacity: v1.ResourceList{
+				v1.ResourceName(v1.ResourceStorage): resource.MustParse(size),
 			},
-			AccessModes: []api.PersistentVolumeAccessMode{
-				api.ReadWriteMany,
+			AccessModes: []v1.PersistentVolumeAccessMode{
+				v1.ReadWriteMany,
 			},
-			PersistentVolumeSource: api.PersistentVolumeSource{
-				NFS: &api.NFSVolumeSource{
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				NFS: &v1.NFSVolumeSource{
 					Server:   service.Spec.ClusterIP,
 					ReadOnly: readOnly,
 
@@ -308,34 +310,34 @@ func (st *NfsStorage) deployPv(s *spec.StorageNode) error {
 }
 
 func (st *NfsStorage) deployNfsService(namespace, name string) error {
-	s := &api.Service{
-		ObjectMeta: api.ObjectMeta{
+	s := &v1.Service{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			Annotations: map[string]string{
 				"description": "Exposes NFS Service",
 			},
 		},
-		Spec: api.ServiceSpec{
+		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
 				"name": name,
 			},
-			Ports: []api.ServicePort{
-				api.ServicePort{
+			Ports: []v1.ServicePort{
+				v1.ServicePort{
 					Name: "nfs",
 					Port: 2049,
 					TargetPort: intstr.IntOrString{
 						IntVal: 2049,
 					},
 				},
-				api.ServicePort{
+				v1.ServicePort{
 					Name: "mountd",
 					Port: 20048,
 					TargetPort: intstr.IntOrString{
 						IntVal: 20048,
 					},
 				},
-				api.ServicePort{
+				v1.ServicePort{
 					Name: "rpcbind",
 					Port: 111,
 					TargetPort: intstr.IntOrString{

@@ -23,15 +23,20 @@ import (
 	qmstorage "github.com/coreos/quartermaster/pkg/storage"
 	"github.com/heketi/utils"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/extensions"
-	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/client/restclient"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api"
+	"k8s.io/client-go/pkg/apis/extensions"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
+
+	kubeclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/kubectl"
-	"k8s.io/kubernetes/pkg/labels"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 var (
@@ -39,14 +44,15 @@ var (
 )
 
 type Operator struct {
-	kclient        *clientset.Clientset
-	rclient        *restclient.RESTClient
-	storageSystems map[spec.StorageTypeIdentifier]qmstorage.StorageType
-	nodeInf        cache.SharedIndexInformer
-	dsetInf        cache.SharedIndexInformer
-	clusterOp      StorageOperator
-	queue          *queue
-	host           string
+	kclient         *kubernetes.Clientset
+	rclient         *restclient.RESTClient
+	internalkclient *kubeclientset.Clientset
+	storageSystems  map[spec.StorageTypeIdentifier]qmstorage.StorageType
+	nodeInf         cache.SharedIndexInformer
+	dsetInf         cache.SharedIndexInformer
+	clusterOp       StorageOperator
+	queue           *queue
+	host            string
 }
 
 // Config defines configuration parameters for the Operator.
@@ -54,22 +60,29 @@ type Config struct {
 	Host        string
 	TLSInsecure bool
 	TLSConfig   restclient.TLSClientConfig
+	Kubeconfig  string
+	MasterUrl   string
 }
 
 // New creates a new controller.
 func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, error) {
-	cfg, err := newClusterConfig(c.Host, c.TLSInsecure, &c.TLSConfig)
+	cfg, err := newClusterConfig(c.Host, c.Kubeconfig, c.TLSInsecure, &c.TLSConfig)
 	if err != nil {
-		return nil, err
+		return nil, logger.Err(err)
 	}
-	client, err := clientset.NewForConfig(cfg)
+	client, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		return nil, err
+		return nil, logger.Err(err)
 	}
 
 	rclient, err := NewQuartermasterRESTClient(*cfg)
 	if err != nil {
-		return nil, err
+		return nil, logger.Err(err)
+	}
+
+	internalkclient, err := kubeclientset.NewForConfig(cfg)
+	if err != nil {
+		return nil, logger.Err(err)
 	}
 
 	// Initialize storage plugins
@@ -89,11 +102,12 @@ func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, erro
 	}
 
 	return &Operator{
-		kclient:        client,
-		rclient:        rclient,
-		queue:          newQueue(200),
-		host:           cfg.Host,
-		storageSystems: storageSystems,
+		kclient:         client,
+		rclient:         rclient,
+		internalkclient: internalkclient,
+		queue:           newQueue(200),
+		host:            cfg.Host,
+		storageSystems:  storageSystems,
 	}, nil
 }
 
@@ -109,15 +123,15 @@ func (c *Operator) GetStorage(name spec.StorageTypeIdentifier) (qmstorage.Storag
 func (c *Operator) Run(stopc <-chan struct{}) error {
 	defer c.queue.close()
 
-	// Start notification worker
-	go c.worker()
-
 	// Test communication with server
 	v, err := c.kclient.Discovery().ServerVersion()
 	if err != nil {
 		return logger.LogError("communicating with server failed: %s", err)
 	}
-	logger.Info("connection to Kubernetes established. Cluster version %v", v)
+	logger.Info("connection to Kubernetes established. Cluster version %s", v.String())
+
+	// Start notification worker
+	go c.worker()
 
 	// Create ThirdPartyResources
 	if err := c.createTPRs(); err != nil {
@@ -130,7 +144,7 @@ func (c *Operator) Run(stopc <-chan struct{}) error {
 		&spec.StorageNode{}, resyncPeriod, cache.Indexers{})
 	c.dsetInf = cache.NewSharedIndexInformer(
 		cache.NewListWatchFromClient(c.kclient.Extensions().RESTClient(), "deployments", api.NamespaceAll, nil),
-		&extensions.Deployment{}, resyncPeriod, cache.Indexers{})
+		&v1beta1.Deployment{}, resyncPeriod, cache.Indexers{})
 
 	// Register Handlers
 	logger.Debug("register event handlers")
@@ -234,7 +248,7 @@ func (c *Operator) worker() {
 	}
 }
 
-func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.StorageNode {
+func (c *Operator) storageNodeForDeployment(d *v1beta1.Deployment) *spec.StorageNode {
 	key, err := keyFunc(d)
 	if err != nil {
 		utilruntime.HandleError(logger.LogError("error creating key: %v", err))
@@ -254,22 +268,22 @@ func (c *Operator) storageNodeForDeployment(d *extensions.Deployment) *spec.Stor
 }
 
 func (c *Operator) deleteDeployment(o interface{}) {
-	d := o.(*extensions.Deployment)
+	d := o.(*v1beta1.Deployment)
 	if s := c.storageNodeForDeployment(d); s != nil {
 		c.enqueueStorageNode(s)
 	}
 }
 
 func (c *Operator) addDeployment(o interface{}) {
-	d := o.(*extensions.Deployment)
+	d := o.(*v1beta1.Deployment)
 	if s := c.storageNodeForDeployment(d); s != nil {
 		c.enqueueStorageNode(s)
 	}
 }
 
 func (c *Operator) updateDeployment(oldo, curo interface{}) {
-	old := oldo.(*extensions.Deployment)
-	cur := curo.(*extensions.Deployment)
+	old := oldo.(*v1beta1.Deployment)
+	cur := curo.(*v1beta1.Deployment)
 
 	// Periodic resync may resend the deployment without changes in-between.
 	// Also breaks loops created by updating the resource ourselves.
@@ -305,12 +319,12 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 			return logger.Err(err)
 		}
 
-		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.kclient)
+		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.internalkclient)
 		if err != nil {
 			return logger.Err(err)
 		}
 
-		err = reaper.Stop(s.Namespace, s.Name, time.Minute, api.NewDeleteOptions(0))
+		err = reaper.Stop(s.Namespace, s.Name, time.Minute, meta.NewDeleteOptions(0))
 		if err != nil {
 			return logger.Err(err)
 		}
@@ -327,8 +341,8 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		return err
 	}
 
-	deployClient := c.kclient.Extensions().Deployments(s.Namespace)
-	deployment := &extensions.Deployment{}
+	deployClient := c.kclient.ExtensionsV1beta1().Deployments(s.Namespace)
+	deployment := &v1beta1.Deployment{}
 	deployment.Namespace = s.Namespace
 	deployment.Name = s.Name
 	obj, exists, err = c.dsetInf.GetStore().Get(deployment)
@@ -356,8 +370,8 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 		// Check if the StorageNode has been added
 
 		// Check if the deployment is ready
-		deploy := obj.(*extensions.Deployment)
-		if deploy.Spec.Replicas != deploy.Status.AvailableReplicas {
+		deploy := obj.(*v1beta1.Deployment)
+		if *deploy.Spec.Replicas != deploy.Status.AvailableReplicas {
 			return nil
 		}
 
@@ -387,7 +401,7 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	} else {
 		// Update deployment and driver
 
-		deploy, err := storage.MakeDeployment(s, obj.(*extensions.Deployment))
+		deploy, err := storage.MakeDeployment(s, obj.(*v1beta1.Deployment))
 		if err != nil {
 			return logger.Err(err)
 		}
@@ -421,9 +435,13 @@ func ListOptions(name string) api.ListOptions {
 	}
 }
 
-func newClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSClientConfig) (*restclient.Config, error) {
+func newClusterConfig(host, kubeconfig string, tlsInsecure bool, tlsConfig *restclient.TLSClientConfig) (*restclient.Config, error) {
 	var cfg *restclient.Config
 	var err error
+
+	if len(kubeconfig) != 0 {
+		return clientcmd.BuildConfigFromFlags("", kubeconfig)
+	}
 
 	if len(host) == 0 {
 		if cfg, err = restclient.InClusterConfig(); err != nil {

@@ -17,131 +17,132 @@ package glusterfs
 import (
 	"github.com/coreos/quartermaster/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/apis/extensions"
-	kubestorage "k8s.io/kubernetes/pkg/apis/storage"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	storageclasspkg "k8s.io/client-go/pkg/apis/storage/v1"
 )
 
 const (
 	glusterfsRoot = "/var/lib/glusterfs-container"
 )
 
-func (st *GlusterStorage) makeGlusterFSDeploymentSpec(s *spec.StorageNode) (*extensions.DeploymentSpec, error) {
-	volumes := []api.Volume{
-		api.Volume{
+func (st *GlusterStorage) makeGlusterFSDeploymentSpec(s *spec.StorageNode) (*v1beta1.DeploymentSpec, error) {
+	volumes := []v1.Volume{
+		v1.Volume{
 			Name: "glusterfs-heketi",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: glusterfsRoot + "/heketi",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-run",
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-lvm",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: "/run/lvm",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-etc",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: glusterfsRoot + "/etc",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-logs",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: glusterfsRoot + "/logs",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-config",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: glusterfsRoot + "/glusterd",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-dev",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: "/dev",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-cgroup",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: "/sys/fs/cgroup",
 				},
 			},
 		},
-		api.Volume{
+		v1.Volume{
 			Name: "glusterfs-misc",
-			VolumeSource: api.VolumeSource{
-				HostPath: &api.HostPathVolumeSource{
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
 					Path: glusterfsRoot + "/glusterfsd-misc",
 				},
 			},
 		},
 	}
 
-	mounts := []api.VolumeMount{
-		api.VolumeMount{
+	mounts := []v1.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-heketi",
 			MountPath: "/var/lib/heketi",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-run",
 			MountPath: "/run",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-lvm",
 			MountPath: "/run/lvm",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-etc",
 			MountPath: "/etc/glusterfs",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-logs",
 			MountPath: "/var/log/glusterfs",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-config",
 			MountPath: "/var/lib/glusterd",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-dev",
 			MountPath: "/dev",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-cgroup",
 			MountPath: "/sys/fs/cgroup",
 		},
-		api.VolumeMount{
+		v1.VolumeMount{
 			Name:      "glusterfs-misc",
 			MountPath: "/var/lib/misc/glusterfsd",
 		},
 	}
 
-	probe := &api.Probe{
+	probe := &v1.Probe{
 		TimeoutSeconds:      3,
 		InitialDelaySeconds: 60,
-		Handler: api.Handler{
-			Exec: &api.ExecAction{
+		Handler: v1.Handler{
+			Exec: &v1.ExecAction{
 				Command: []string{
 					"/bin/bash",
 					"-c",
@@ -152,10 +153,11 @@ func (st *GlusterStorage) makeGlusterFSDeploymentSpec(s *spec.StorageNode) (*ext
 	}
 
 	priv := true
-	spec := &extensions.DeploymentSpec{
-		Replicas: 1,
-		Template: api.PodTemplateSpec{
-			ObjectMeta: api.ObjectMeta{
+	replicas := int32(1)
+	spec := &v1beta1.DeploymentSpec{
+		Replicas: &replicas,
+		Template: v1.PodTemplateSpec{
+			ObjectMeta: meta.ObjectMeta{
 				Labels: map[string]string{
 					"quartermaster":  s.Name,
 					"name":           "glusterfs",
@@ -164,26 +166,24 @@ func (st *GlusterStorage) makeGlusterFSDeploymentSpec(s *spec.StorageNode) (*ext
 				},
 				Name: s.Name,
 			},
-			Spec: api.PodSpec{
+			Spec: v1.PodSpec{
 				NodeName:     s.Spec.NodeName,
 				NodeSelector: s.Spec.NodeSelector,
-				Containers: []api.Container{
-					api.Container{
+				Containers: []v1.Container{
+					v1.Container{
 						Name:            s.Name,
 						Image:           s.Spec.Image,
-						ImagePullPolicy: api.PullIfNotPresent,
+						ImagePullPolicy: v1.PullIfNotPresent,
 						VolumeMounts:    mounts,
 						LivenessProbe:   probe,
 						ReadinessProbe:  probe,
-						SecurityContext: &api.SecurityContext{
+						SecurityContext: &v1.SecurityContext{
 							Privileged: &priv,
 						},
 					},
 				},
-				Volumes: volumes,
-				SecurityContext: &api.PodSecurityContext{
-					HostNetwork: true,
-				},
+				Volumes:     volumes,
+				HostNetwork: true,
 			},
 		},
 	}
@@ -206,8 +206,8 @@ func (st *GlusterStorage) deployStorageClass(namespace string) error {
 	scname := "gluster.qm." + namespace
 
 	// Create storage class
-	storageclass := &kubestorage.StorageClass{
-		ObjectMeta: api.ObjectMeta{
+	storageclass := &storageclasspkg.StorageClass{
+		ObjectMeta: meta.ObjectMeta{
 			Name:      scname,
 			Namespace: namespace,
 			Labels: map[string]string{
