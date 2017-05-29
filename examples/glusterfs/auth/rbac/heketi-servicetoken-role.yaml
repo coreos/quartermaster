@@ -5,6 +5,6 @@ metadata:
   name: heketi-service-account
 rules:
   - apiGroups: [""]
-    resources: ["pods", "pods/exec", "pods/attach", "pods/proxy", "pods/portforward"]
+    resources: ["pods", "pods/exec", "pods/attach", "pods/proxy", "pods/portforward", "secrets"]
     verbs: ["get", "put", "patch", "update", "list", "post", "watch", "create", "delete", "deletecollection"]
     nonResourceURLs: []

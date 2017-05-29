@@ -104,7 +104,7 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 					Containers: []v1.Container{
 						v1.Container{
 							Name:            "heketi",
-							Image:           "heketi/heketi:dev",
+							Image:           "lpabon/heketi:dev",
 							ImagePullPolicy: v1.PullIfNotPresent,
 							Env: []v1.EnvVar{
 								v1.EnvVar{
@@ -118,6 +118,10 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 								v1.EnvVar{
 									Name:  "HEKETI_SNAPSHOT_LIMIT",
 									Value: "14",
+								},
+								v1.EnvVar{
+									Name:  "HEKETI_BACKUP_DB_TO_KUBE_SECRET",
+									Value: "yes",
 								},
 							},
 							Ports: []v1.ContainerPort{
