@@ -16,7 +16,6 @@ If you are new to the Github process, please see https://guides.github.com/intro
 1. Setup your [GOPATH](http://www.g33knotes.org/2014/07/60-second-count-down-to-go.html) environment
 1. Type: `go get -d github.com/coreos/quartermaster`
 1. Type: `cd $GOPATH/src/github.com/coreos/quartermaster`
-1. Setup vendor dependencies: `glide install -v`
 1. Build: `make`
 
 Now you need to setup your repo where you will be pushing your changes into:
