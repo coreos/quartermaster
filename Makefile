@@ -10,6 +10,7 @@ BRANCH := $(subst /,-,$(shell git rev-parse --abbrev-ref HEAD))
 VER := $(shell git describe)
 ARCH := $(shell go env GOARCH)
 GOOS := $(shell go env GOOS)
++GLIDEPATH := $(shell command -v glide 2> /dev/null)
 DIR=.
 
 ifdef APP_SUFFIX
@@ -37,11 +38,20 @@ GOFILES=$(shell go list ./... | grep -v vendor)
 
 all: quartermaster
 
-glide-up:
-	glide up -v
+vendor: glide.lock
+ifndef GLIDEPATH
+	echo "Installing Glide"
+	curl https://glide.sh/get | sh
+endif
+	echo "Installing vendor directory"
+	glide install -v
 
-rebuild:
-	glide rebuild
+	echo "Building dependencies to make builds faster"
+	go install github.com/coreos/quartermaster/cmd/quartermaster
+
+glide.lock: glide.yaml
+	echo "Glide.yaml has changed, updating glide.lock"
+	glide update -v
 
 # print the version
 version:
@@ -55,7 +65,7 @@ name:
 package:
 	@echo $(PACKAGE)
 
-quartermaster:
+quartermaster: glide.lock vendor
 	go build $(LDFLAGS) -o $(APP_NAME) cmd/quartermaster/main.go
 
 run: quartermaster
