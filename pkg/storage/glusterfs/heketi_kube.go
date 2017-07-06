@@ -73,8 +73,14 @@ func (st *GlusterStorage) deployHeketi(namespace string) error {
 
 func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 
+	const (
+		heketiDbBackupVolumeName = "heketi-db-secret"
+		heketiDbBackupSecretName = "heketi-db-backup"
+	)
+
 	// Deployment for Heketi
 	replicas := int32(1)
+	optionalSecret := true
 	d := &v1beta1.Deployment{
 		ObjectMeta: meta.ObjectMeta{
 			Name:      "heketi",
@@ -104,7 +110,7 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 					Containers: []v1.Container{
 						v1.Container{
 							Name:            "heketi",
-							Image:           "lpabon/heketi:dev",
+							Image:           "heketi/heketi:dev",
 							ImagePullPolicy: v1.PullIfNotPresent,
 							Env: []v1.EnvVar{
 								v1.EnvVar{
@@ -133,6 +139,10 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 								v1.VolumeMount{
 									Name:      "db",
 									MountPath: "/var/lib/heketi",
+								},
+								v1.VolumeMount{
+									Name:      heketiDbBackupVolumeName,
+									MountPath: "/backupdb",
 								},
 							},
 							ReadinessProbe: &v1.Probe{
@@ -164,6 +174,15 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 					Volumes: []v1.Volume{
 						v1.Volume{
 							Name: "db",
+						},
+						v1.Volume{
+							Name: heketiDbBackupVolumeName,
+							VolumeSource: v1.VolumeSource{
+								Secret: &v1.SecretVolumeSource{
+									SecretName: heketiDbBackupSecretName,
+									Optional:   &optionalSecret,
+								},
+							},
 						},
 					},
 				},
