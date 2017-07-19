@@ -197,14 +197,17 @@ func (s *StorageClusterOperator) delete(cs *spec.StorageCluster) error {
 		return logger.Err(err)
 	}
 
-	// Delete all nodes
+	// Delete all storage nodes
 	for _, node := range list.Items {
-		if node.Spec.ClusterRef.Name == cs.GetName() {
-			err := ns_client.Delete(node.GetName(), nil)
-			if err != nil {
-				logger.LogError("unable to delete node %v: %v", node.GetName(), err)
-			} else {
-				logger.Info("deleted node %v", node.GetName())
+		for _, ref := range node.GetOwnerReferences() {
+			if ref.Name == cs.GetName() {
+				err := ns_client.Delete(node.GetName(), nil)
+				if err != nil {
+					logger.LogError("unable to delete node %v: %v", node.GetName(), err)
+				} else {
+					logger.Info("deleted node %v", node.GetName())
+					break
+				}
 			}
 		}
 	}
@@ -228,12 +231,6 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) error {
 	// Create client
 	ns_client := qmclient.NewStorageNodes(s.op.GetRESTClient(), cs.Namespace)
 
-	// Create a reference object
-	clusterRef, err := api.GetReference(api.Scheme, cs)
-	if err != nil {
-		return logger.Err(err)
-	}
-
 	// Create nodes
 	for _, ns := range cs.Spec.StorageNodes {
 
@@ -251,6 +248,10 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) error {
 				Name:      cs.Name + "-" + fmt.Sprintf("%d", storageNodeSpecHash),
 				Namespace: cs.Namespace,
 				Labels:    cs.GetLabels(),
+
+				// Even though it is not supported yet as of 1.7, we will still include it
+				// so that it can be used in the delete() call
+				OwnerReferences: []meta.OwnerReference{*newStorageClusterRef(cs)},
 			},
 			Spec: ns,
 		}
@@ -260,7 +261,6 @@ func (s *StorageClusterOperator) submitNodesFor(cs *spec.StorageCluster) error {
 			node.Spec.Image = cs.Spec.Image
 		}
 
-		node.Spec.ClusterRef = clusterRef
 		node.Spec.Type = cs.Spec.Type
 
 		// Submit the node
@@ -281,4 +281,17 @@ func GetStorageNodeSpecHash(sp spec.StorageNodeSpec) uint32 {
 	sphash := adler32.New()
 	hashutil.DeepHashObject(sphash, sp)
 	return sphash.Sum32()
+}
+
+func newStorageClusterRef(cs *spec.StorageCluster) *meta.OwnerReference {
+	blockOwnerDeletion := true
+	isController := true
+	return &meta.OwnerReference{
+		APIVersion:         cs.APIVersion,
+		Kind:               cs.Kind,
+		Name:               cs.Name,
+		UID:                cs.UID,
+		BlockOwnerDeletion: &blockOwnerDeletion,
+		Controller:         &isController,
+	}
 }

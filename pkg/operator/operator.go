@@ -29,14 +29,10 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/apis/extensions"
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-
-	kubeclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/kubectl"
 )
 
 var (
@@ -44,15 +40,14 @@ var (
 )
 
 type Operator struct {
-	kclient         *kubernetes.Clientset
-	rclient         *restclient.RESTClient
-	internalkclient *kubeclientset.Clientset
-	storageSystems  map[spec.StorageTypeIdentifier]qmstorage.StorageType
-	nodeInf         cache.SharedIndexInformer
-	dsetInf         cache.SharedIndexInformer
-	clusterOp       StorageOperator
-	queue           *queue
-	host            string
+	kclient        *kubernetes.Clientset
+	rclient        *restclient.RESTClient
+	storageSystems map[spec.StorageTypeIdentifier]qmstorage.StorageType
+	nodeInf        cache.SharedIndexInformer
+	dsetInf        cache.SharedIndexInformer
+	clusterOp      StorageOperator
+	queue          *queue
+	host           string
 }
 
 // Config defines configuration parameters for the Operator.
@@ -80,11 +75,6 @@ func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, erro
 		return nil, logger.Err(err)
 	}
 
-	internalkclient, err := kubeclientset.NewForConfig(cfg)
-	if err != nil {
-		return nil, logger.Err(err)
-	}
-
 	// Initialize storage plugins
 	storageSystems := make(map[spec.StorageTypeIdentifier]qmstorage.StorageType)
 	for _, newStorage := range storageFuns {
@@ -102,12 +92,11 @@ func New(c Config, storageFuns ...qmstorage.StorageTypeNewFunc) (*Operator, erro
 	}
 
 	return &Operator{
-		kclient:         client,
-		rclient:         rclient,
-		internalkclient: internalkclient,
-		queue:           newQueue(200),
-		host:            cfg.Host,
-		storageSystems:  storageSystems,
+		kclient:        client,
+		rclient:        rclient,
+		queue:          newQueue(200),
+		host:           cfg.Host,
+		storageSystems: storageSystems,
 	}, nil
 }
 
@@ -314,20 +303,19 @@ func (c *Operator) reconcile(s *spec.StorageNode) error {
 	}
 
 	if !exists {
+
+		// Tell plugin it is deleted
 		err := storage.DeleteNode(s)
 		if err != nil {
 			return logger.Err(err)
 		}
 
-		reaper, err := kubectl.ReaperFor(extensions.Kind("Deployment"), c.internalkclient)
-		if err != nil {
-			return logger.Err(err)
-		}
-
-		err = reaper.Stop(s.Namespace, s.Name, time.Minute, meta.NewDeleteOptions(0))
-		if err != nil {
-			return logger.Err(err)
-		}
+		// Delete deployment
+		propagation := meta.DeletePropagationForeground
+		deployClient := c.kclient.ExtensionsV1beta1().Deployments(s.Namespace)
+		deployClient.Delete(s.GetName(), &meta.DeleteOptions{
+			PropagationPolicy: &propagation,
+		})
 
 		return nil
 	}
@@ -476,4 +464,17 @@ func storageNodeDeepCopy(ns *spec.StorageNode) (*spec.StorageNode, error) {
 		return nil, logger.LogError("expected StorageNode, got %#v", objCopy)
 	}
 	return copied, nil
+}
+
+func newStorageNodeRef(ns *spec.StorageNode) *meta.OwnerReference {
+	blockOwnerDeletion := true
+	isController := true
+	return &meta.OwnerReference{
+		APIVersion:         ns.APIVersion,
+		Kind:               ns.Kind,
+		Name:               ns.Name,
+		UID:                ns.UID,
+		BlockOwnerDeletion: &blockOwnerDeletion,
+		Controller:         &isController,
+	}
 }
