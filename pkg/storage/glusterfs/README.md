@@ -76,7 +76,7 @@ To easiest way to check for errors is to check the logs of Heketi and QM.
 
 ## Example Application
 
-The file [`examples/glusterfs/nginx-demo.yaml`](https://github.com/coreos/quartermaster/blob/master/examples/glusterfs/nginx-demo.yaml)
+The file [`examples/glusterfs/nginx-demo.yaml`](https://github.com/coreos/quartermaster/blob/master/examples/glusterfs/apps/nginx-demo.yaml)
 contains an example application set which will utilize dynamic provisioning to
 create a physical volume. Simply run the following command to start the demo:
 
