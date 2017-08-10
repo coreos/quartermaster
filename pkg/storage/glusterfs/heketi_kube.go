@@ -16,6 +16,9 @@ package glusterfs
 
 import (
 	"fmt"
+
+	"github.com/coreos/quartermaster/pkg/spec"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -54,31 +57,44 @@ func (st *GlusterStorage) getHeketiAddress(namespace string) (string, error) {
 	//return "http://localhost:8080", nil
 }
 
-func (st *GlusterStorage) deployHeketi(namespace string) error {
+func (st *GlusterStorage) deployHeketi(c *spec.StorageCluster) error {
 	// Create a service account for Heketi
-	err := st.deployHeketiServiceAccount(namespace)
+	err := st.deployHeketiServiceAccount(c.GetNamespace())
 	if err != nil {
 		return err
 	}
 
 	// Deployment
-	err = st.deployHeketiPod(namespace)
+	err = st.deployHeketiPod(c)
 	if err != nil {
 		return err
 	}
 
 	// Create service to access Heketi API
-	return st.deployHeketiService(namespace)
+	return st.deployHeketiService(c.GetNamespace())
 }
 
-func (st *GlusterStorage) deployHeketiPod(namespace string) error {
+func (st *GlusterStorage) deployHeketiPod(c *spec.StorageCluster) error {
 
 	const (
 		heketiDbBackupVolumeName = "heketi-db-secret"
 		heketiDbBackupSecretName = "heketi-db-backup"
 	)
 
+	// Get image
+	image := "heketi/heketi:dev"
+	if c.Spec.GlusterFS == nil {
+		c.Spec.GlusterFS = &spec.GlusterStorageCluster{
+			HeketiImage: image,
+		}
+	} else if len(c.Spec.GlusterFS.HeketiImage) != 0 {
+		image = c.Spec.GlusterFS.HeketiImage
+	} else {
+		c.Spec.GlusterFS.HeketiImage = image
+	}
+
 	// Deployment for Heketi
+	namespace := c.GetNamespace()
 	replicas := int32(1)
 	optionalSecret := true
 	d := &v1beta1.Deployment{
@@ -110,7 +126,7 @@ func (st *GlusterStorage) deployHeketiPod(namespace string) error {
 					Containers: []v1.Container{
 						v1.Container{
 							Name:            "heketi",
-							Image:           "heketi/heketi:dev",
+							Image:           image,
 							ImagePullPolicy: v1.PullIfNotPresent,
 							Env: []v1.EnvVar{
 								v1.EnvVar{

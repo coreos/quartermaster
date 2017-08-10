@@ -316,6 +316,11 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 			Labels: map[string]string{
 				"sample": "label",
 			},
+			OwnerReferences: []meta.OwnerReference{
+				meta.OwnerReference{
+					Name: c.Name,
+				},
+			},
 		},
 		Spec: spec.StorageNodeSpec{
 			Type:     "glusterfs",
@@ -326,9 +331,6 @@ func TestGlusterFSAddNewNodeWithHeketi(t *testing.T) {
 			},
 			NodeSelector: map[string]string{
 				"my": "node",
-			},
-			ClusterRef: &api.ObjectReference{
-				Name: c.Name,
 			},
 		},
 	}
@@ -430,6 +432,11 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 			Labels: map[string]string{
 				"sample": "label",
 			},
+			OwnerReferences: []meta.OwnerReference{
+				meta.OwnerReference{
+					Name: c.Name,
+				},
+			},
 		},
 		Spec: spec.StorageNodeSpec{
 			Type:     "glusterfs",
@@ -440,9 +447,6 @@ func TestGlusterFSAddNewNodeWithDevices(t *testing.T) {
 			},
 			StorageNetwork: &spec.StorageNodeNetwork{
 				IPs: []string{"1.1.1.1"},
-			},
-			ClusterRef: &api.ObjectReference{
-				Name: c.Name,
 			},
 			Devices: []string{
 				"/dev/fake1",
@@ -555,6 +559,11 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 			Labels: map[string]string{
 				"sample": "label",
 			},
+			OwnerReferences: []meta.OwnerReference{
+				meta.OwnerReference{
+					Name: c.Name,
+				},
+			},
 		},
 		Spec: spec.StorageNodeSpec{
 			Type:     "glusterfs",
@@ -565,9 +574,6 @@ func TestGlusterFSAddNewNodeAddOneDevice(t *testing.T) {
 			},
 			StorageNetwork: &spec.StorageNodeNetwork{
 				IPs: []string{"1.1.1.1"},
-			},
-			ClusterRef: &api.ObjectReference{
-				Name: c.Name,
 			},
 			Devices: []string{
 				"/dev/fake1",

@@ -202,7 +202,13 @@ func (st *NfsStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error) {
 
 	// Update cluster
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
-	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
+
+	// get cluster Name
+	owners := s.GetOwnerReferences()
+	if len(owners) == 0 {
+		return nil, logger.LogError("Now owner reference found in %s/%s", s.GetNamespace(), s.GetName())
+	}
+	cluster, err := clusters.Get(owners[0].Name)
 	if err != nil {
 		return nil, logger.Err(err)
 	}

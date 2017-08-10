@@ -20,7 +20,6 @@ package spec
 
 import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/pkg/api"
 )
 
 // StorageNode defines a single instance of available storage on a
@@ -133,10 +132,6 @@ type StorageNodeSpec struct {
 	// +optional
 	Directories []string `json:"directories,omitempty"`
 
-	// References the StorageCluster when bound to a cluster.  This is
-	// when StorageCluster submits the StorageNode.
-	ClusterRef *api.ObjectReference `json:"clusterRef,omitempty"`
-
 	// Storage system settings
 	// @DRIVER
 	GlusterFS *GlusterStorageNode `json:"glusterfs,omitempty"`
@@ -152,7 +147,8 @@ type StorageNodeNetwork struct {
 
 // GlusterStorageCluster defines the specific information about the cluster
 type GlusterStorageCluster struct {
-	Cluster string `json:"cluster"`
+	HeketiImage string `json:"heketiImage"`
+	Cluster     string `json:"cluster"`
 }
 
 // GlusterStorageNode defines the specifics of how this Gluster instance should be instantiated.
