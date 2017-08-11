@@ -95,7 +95,7 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 	logger.Debug("msg add cluster cluster %v", c.Name)
 
 	// Make sure Heketi is up and running
-	err := st.deployHeketi(c.Namespace)
+	err := st.deployHeketi(c)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +116,12 @@ func (st *GlusterStorage) AddCluster(c *spec.StorageCluster) (*spec.StorageClust
 		}
 
 		// Save cluster id in the spec
-		c.Spec.GlusterFS = &spec.GlusterStorageCluster{
-			Cluster: hcluster.Id,
+		if c.Spec.GlusterFS == nil {
+			c.Spec.GlusterFS = &spec.GlusterStorageCluster{
+				Cluster: hcluster.Id,
+			}
+		} else {
+			c.Spec.GlusterFS.Cluster = hcluster.Id
 		}
 
 		return c, nil
@@ -185,7 +189,13 @@ func (st *GlusterStorage) AddNode(s *spec.StorageNode) (*spec.StorageNode, error
 
 	// Get cluster client
 	clusters := qmclient.NewStorageClusters(st.qm, s.GetNamespace())
-	cluster, err := clusters.Get(s.Spec.ClusterRef.Name)
+
+	// get cluster Name
+	owners := s.GetOwnerReferences()
+	if len(owners) == 0 {
+		return nil, logger.LogError("Now owner reference found in %s/%s", s.GetNamespace(), s.GetName())
+	}
+	cluster, err := clusters.Get(owners[0].Name)
 	if err != nil {
 		return nil, logger.Err(err)
 	}
